@@ -3,11 +3,16 @@
 Only fields used by the MVP are mapped. Extra time / penalties are ignored —
 we store the main-time (FT) score only.
 """
+import re
 from datetime import datetime, timezone
 
 import httpx
 
 from app.config import settings
+
+# Настоящая группа в /standings называется "Group A".."Group L". Кроме них там
+# бывают служебные таблицы вроде "Ranking of third-placed teams" — их игнорируем.
+_GROUP_RE = re.compile(r"^group\s+([a-z0-9]{1,3})$", re.IGNORECASE)
 
 _STATUS_MAP = {
     "TBD": "scheduled",
@@ -99,10 +104,12 @@ async def fetch_groups() -> dict[str, str]:
     for league in data.get("response", []):
         for group in league.get("league", {}).get("standings", []) or []:
             for row in group:
-                raw = (row.get("group") or "").replace("Group", "").strip()
+                m = _GROUP_RE.match((row.get("group") or "").strip())
+                if not m:
+                    continue
                 team = (row.get("team") or {}).get("name")
-                if team and raw:
-                    out[team] = raw[:20]
+                if team:
+                    out[team] = m.group(1).upper()
     return out
 
 

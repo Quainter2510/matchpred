@@ -15,7 +15,10 @@ export function formatStage(
 ): string {
   if (!stage) return "";
   const s = stage.toLowerCase().trim();
-  const grp = groupName?.trim();
+  // Принимаем только короткую метку группы (буква/число), а не служебные
+  // строки из standings вроде "Ranking of third-placed teams".
+  const raw = groupName?.trim();
+  const grp = raw && /^[a-z0-9]{1,3}$/i.test(raw) ? raw.toUpperCase() : undefined;
 
   // Группа с буквой: "group_a_-_1", "group_a", "group_b_2" → "Группа A тур 1".
   const lettered = s.match(/group[_\s-]*([a-l])(?:[_\s-]+(\d+))?/);
