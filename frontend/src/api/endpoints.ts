@@ -58,6 +58,7 @@ export interface LeaderboardEntry {
   has_scorer: boolean;
   champion_correct: boolean;
   scorer_correct: boolean;
+  participation_confirmed: boolean;
 }
 
 export interface SpecialPrediction {
@@ -77,6 +78,7 @@ export interface Member {
   tournament_role: string;
   total_points: number;
   exact_scores_count: number;
+  participation_confirmed: boolean;
 }
 
 export interface AuditEntry {
@@ -147,6 +149,10 @@ export const api = {
   members: () => client.get<Member[]>("/admin/members").then((r) => r.data),
   changeRole: (uid: string, role: string) =>
     client.patch(`/admin/members/${uid}/role`, { role }).then((r) => r.data),
+  setParticipation: (uid: string, confirmed: boolean) =>
+    client
+      .patch(`/admin/members/${uid}/participation`, { confirmed })
+      .then((r) => r.data),
   removeMember: (uid: string) =>
     client.delete(`/admin/members/${uid}`).then((r) => r.data),
   changePassword: (new_password: string) =>

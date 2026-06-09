@@ -51,3 +51,7 @@ class TournamentMember(Base):
     )
     total_points: Mapped[int] = mapped_column(Integer, default=0)
     exact_scores_count: Mapped[int] = mapped_column(Integer, default=0)
+    # Чисто визуальный флаг «участие подтверждено» — на подсчёт очков не влияет.
+    participation_confirmed: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )

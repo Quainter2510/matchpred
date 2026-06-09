@@ -12,10 +12,15 @@ class MemberOut(BaseModel):
     tournament_role: str
     total_points: int
     exact_scores_count: int
+    participation_confirmed: bool = False
 
 
 class RoleUpdate(BaseModel):
     role: str = Field(pattern="^(admin|player)$")
+
+
+class ParticipationUpdate(BaseModel):
+    confirmed: bool
 
 
 class PasswordUpdate(BaseModel):

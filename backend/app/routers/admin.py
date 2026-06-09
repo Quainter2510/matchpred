@@ -17,6 +17,7 @@ from app.redis_client import invalidate_leaderboard_cache
 from app.schemas.admin import (
     AuditLogOut,
     MemberOut,
+    ParticipationUpdate,
     PasswordUpdate,
     RoleUpdate,
     TransferRequest,
@@ -127,6 +128,7 @@ async def members(
             tournament_role=m.tournament_role,
             total_points=m.total_points,
             exact_scores_count=m.exact_scores_count,
+            participation_confirmed=m.participation_confirmed,
         )
         for m, u in rows
     ]
@@ -152,6 +154,22 @@ async def change_role(
         details={"role": payload.role},
     )
     await db.commit()
+    return {"ok": True}
+
+
+@router.patch("/admin/members/{uid}/participation")
+async def set_participation(
+    uid: uuid.UUID,
+    payload: ParticipationUpdate,
+    user: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    member = await db.get(TournamentMember, uid)
+    if not member:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Member not found")
+    member.participation_confirmed = payload.confirmed
+    await db.commit()
+    await invalidate_leaderboard_cache()
     return {"ok": True}
 
 

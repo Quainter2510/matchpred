@@ -15,6 +15,14 @@ export default function AdminMembers() {
     mutationFn: (uid: string) => api.removeMember(uid),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["members"] }),
   });
+  const participation = useMutation({
+    mutationFn: ({ uid, confirmed }: { uid: string; confirmed: boolean }) =>
+      api.setParticipation(uid, confirmed),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["members"] });
+      qc.invalidateQueries({ queryKey: ["leaderboard"] });
+    },
+  });
   const transfer = useMutation({
     mutationFn: (uid: string) => api.transferSuperadmin(uid),
     onSuccess: () => {
@@ -30,6 +38,7 @@ export default function AdminMembers() {
           <tr className="border-b text-left text-slate-500">
             <th className="py-2">Игрок</th>
             <th>Роль</th>
+            <th className="text-center">Участие</th>
             <th>Очки</th>
             <th></th>
           </tr>
@@ -53,6 +62,22 @@ export default function AdminMembers() {
                     <option value="admin">Админ</option>
                   </select>
                 )}
+              </td>
+              <td className="text-center">
+                <label className="inline-flex cursor-pointer items-center gap-1">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 accent-emerald-600"
+                    checked={m.participation_confirmed}
+                    disabled={participation.isPending}
+                    onChange={(e) =>
+                      participation.mutate({
+                        uid: m.user_id,
+                        confirmed: e.target.checked,
+                      })
+                    }
+                  />
+                </label>
               </td>
               <td>{m.total_points}</td>
               <td className="space-x-2 text-right">

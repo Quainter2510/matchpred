@@ -32,6 +32,7 @@ export default function LeaderboardTable({
         <tr className="border-b text-left text-slate-500">
           <th className="py-2 w-10">#</th>
           <th>Игрок</th>
+          <th className="text-center w-12" title="Участие подтверждено">✅</th>
           <th className="text-center w-12" title="Чемпион">🏆</th>
           <th className="text-center w-12" title="Бомбардир">⚽</th>
           <th className="text-right">Очки</th>
@@ -56,6 +57,13 @@ export default function LeaderboardTable({
                 </div>
               )}
               {e.nickname}
+            </td>
+            <td className="text-center">
+              {e.participation_confirmed ? (
+                <span className="text-emerald-600" title="Участие подтверждено">✓</span>
+              ) : (
+                <span className="text-slate-300" title="Не подтверждено">—</span>
+              )}
             </td>
             <td className="text-center"><StatusMark set={e.has_champion} correct={e.champion_correct} /></td>
             <td className="text-center"><StatusMark set={e.has_scorer} correct={e.scorer_correct} /></td>

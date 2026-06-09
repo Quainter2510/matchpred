@@ -14,6 +14,7 @@ class LeaderboardEntry(BaseModel):
     has_scorer: bool = False
     champion_correct: bool = False
     scorer_correct: bool = False
+    participation_confirmed: bool = False
 
 
 class MyLeaderboardEntry(LeaderboardEntry):
