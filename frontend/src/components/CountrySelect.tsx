@@ -7,11 +7,13 @@ interface Props {
   value: string;
   onChange: (en: string) => void;
   disabled?: boolean;
+  /** Подсветить поле зелёным (выбор сохранён). */
+  highlight?: boolean;
 }
 
 /** Автодополнение со списком сборных: подсказки на русском + флаг.
  *  Наружу отдаёт английское каноническое имя (для совпадения при подсчёте). */
-export default function CountrySelect({ value, onChange, disabled }: Props) {
+export default function CountrySelect({ value, onChange, disabled, highlight }: Props) {
   const selected = findCountry(value);
   const [q, setQ] = useState(selected?.ru ?? value ?? "");
   const [open, setOpen] = useState(false);
@@ -46,7 +48,7 @@ export default function CountrySelect({ value, onChange, disabled }: Props) {
   return (
     <div className="relative" ref={boxRef}>
       <input
-        className="input"
+        className={`input ${highlight ? "bg-emerald-50 ring-2 ring-emerald-500" : ""}`}
         placeholder="Начните вводить страну…"
         value={q}
         disabled={disabled}

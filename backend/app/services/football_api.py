@@ -81,6 +81,12 @@ async def fetch_fixtures() -> list[dict]:
     return [_normalize_fixture(fx) for fx in data.get("response", [])]
 
 
+# Бомбардир — это почти всегда нападающий, реже полузащитник. Поднимаем таких
+# кандидатов наверх списка, чтобы не тонуть в защитниках/вратарях.
+_POSITION_RANK = {"Attacker": 0, "Midfielder": 1, "Defender": 2, "Goalkeeper": 3}
+_SEARCH_LIMIT = 20
+
+
 async def search_players(query: str) -> list[dict]:
     """Player autocomplete for the top-scorer special prediction.
 
@@ -88,22 +94,34 @@ async def search_players(query: str) -> list[dict]:
     `/players?league=&season=`: before the tournament the WC league/season has
     no squads loaded, so a league/season-scoped search returns nothing. Profile
     search works by surname across all of API-Football's player database.
+
+    Результат сортируется по позиции (нападающие выше) и обрезается до
+    _SEARCH_LIMIT, иначе кандидатов слишком много.
     """
     data = await _get("/players/profiles", {"search": query})
-    out: list[dict] = []
+    ranked: list[tuple] = []
+    seen: set[int] = set()
     for item in data.get("response", []):
         player = item.get("player", {})
-        if not player.get("id"):
+        pid = player.get("id")
+        if not pid or pid in seen:
             continue
+        seen.add(pid)
         name = player.get("name") or " ".join(
             filter(None, [player.get("firstname"), player.get("lastname")])
         )
-        out.append(
-            {
-                "api_id": player.get("id"),
-                "name": name,
-                "team": player.get("nationality"),
-                "photo": player.get("photo"),
-            }
+        rank = _POSITION_RANK.get(player.get("position"), 4)
+        ranked.append(
+            (
+                rank,
+                (name or "").lower(),
+                {
+                    "api_id": pid,
+                    "name": name,
+                    "team": player.get("nationality"),
+                    "photo": player.get("photo"),
+                },
+            )
         )
-    return out
+    ranked.sort(key=lambda t: (t[0], t[1]))
+    return [d for _, _, d in ranked[:_SEARCH_LIMIT]]

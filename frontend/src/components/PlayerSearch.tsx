@@ -12,9 +12,11 @@ interface Props {
   value: { id: number | null; name: string | null };
   onSelect: (id: number, name: string) => void;
   disabled?: boolean;
+  /** Подсветить поле зелёным (выбор сохранён). */
+  highlight?: boolean;
 }
 
-export default function PlayerSearch({ value, onSelect, disabled }: Props) {
+export default function PlayerSearch({ value, onSelect, disabled, highlight }: Props) {
   const [q, setQ] = useState(value.name || "");
   const [results, setResults] = useState<PlayerItem[]>([]);
   const [open, setOpen] = useState(false);
@@ -43,7 +45,7 @@ export default function PlayerSearch({ value, onSelect, disabled }: Props) {
   return (
     <div className="relative">
       <input
-        className="input"
+        className={`input ${highlight ? "bg-emerald-50 ring-2 ring-emerald-500" : ""}`}
         placeholder="Имя бомбардира (мин. 3 символа)"
         value={q}
         disabled={disabled}

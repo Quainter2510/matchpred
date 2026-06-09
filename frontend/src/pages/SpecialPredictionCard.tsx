@@ -38,6 +38,12 @@ export default function SpecialPredictionCard() {
   if (isLoading) return null;
   const locked = data?.locked;
 
+  // Поле подсвечивается зелёным, когда текущее значение совпадает с сохранённым
+  // на сервере (нет несохранённых правок).
+  const championSaved = !!data?.champion_team && champion === data.champion_team;
+  const scorerSaved =
+    !!data?.top_scorer_api_id && scorer.id === data.top_scorer_api_id;
+
   return (
     <section className="card space-y-3">
       <h2 className="text-lg font-semibold">Спецпрогнозы</h2>
@@ -55,7 +61,7 @@ export default function SpecialPredictionCard() {
             {champion ? <TeamName team={champion} /> : <span className="text-slate-400">—</span>}
           </div>
         ) : (
-          <CountrySelect value={champion} onChange={setChampion} />
+          <CountrySelect value={champion} onChange={setChampion} highlight={championSaved} />
         )}
       </div>
       <div>
@@ -64,6 +70,7 @@ export default function SpecialPredictionCard() {
           value={scorer}
           disabled={locked}
           onSelect={(id, name) => setScorer({ id, name })}
+          highlight={scorerSaved}
         />
       </div>
       {!locked && (
