@@ -1,5 +1,6 @@
 import secrets
 import uuid
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
@@ -182,11 +183,69 @@ async def yandex_callback(
 # ---------------- Telegram Login Widget ----------------
 @router.get("/telegram/login")
 async def telegram_login():
-    # The widget is rendered on the frontend; this endpoint documents the flow.
     return {
         "bot_username": settings.TELEGRAM_BOT_USERNAME,
         "method": "Render Telegram Login Widget, then POST /auth/telegram/verify",
     }
+
+
+@router.get("/telegram/oauth-redirect")
+async def telegram_oauth_redirect():
+    """Redirect to oauth.telegram.org — works in all browsers including mobile."""
+    bot_id = settings.TELEGRAM_BOT_TOKEN.split(":")[0]
+    origin = settings.FRONTEND_URL.rstrip("/")
+    callback = f"{origin}/api/v1/auth/telegram/callback"
+    # return_to must be a frontend page — Telegram appends #tgAuthResult=BASE64
+    # as a URL fragment, which the server never receives; JS reads it instead.
+    frontend_callback = f"{origin}/telegram-auth"
+    params = urlencode({
+        "bot_id": bot_id,
+        "origin": origin,
+        "embed": "0",
+        "request_access": "write",
+        "return_to": frontend_callback,
+    })
+    return RedirectResponse(f"https://oauth.telegram.org/auth?{params}")
+
+
+@router.get("/telegram/callback")
+async def telegram_callback(
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
+    """Redirect-mode handler for Telegram Login Widget (data-auth-url).
+    Used by mobile browsers where the popup-based widget doesn't render.
+    Telegram passes auth data as query params; we verify, upsert the user,
+    set the refresh cookie and redirect to the frontend.
+    """
+    data = dict(request.query_params)
+    print(f"[TG CALLBACK] received keys: {sorted(data.keys())}")
+    print(f"[TG CALLBACK] auth_date={data.get('auth_date')} id={data.get('id')} hash_present={bool(data.get('hash'))}")
+    ok = telegram.verify_telegram_auth(data)
+    print(f"[TG CALLBACK] verify_result={ok} bot_token_prefix={settings.TELEGRAM_BOT_TOKEN[:10] if settings.TELEGRAM_BOT_TOKEN else 'EMPTY'}")
+    if not ok:
+        frontend_url = settings.FRONTEND_URL.rstrip("/")
+        return RedirectResponse(f"{frontend_url}/login?error=telegram_auth_failed")
+
+    profile = telegram.extract_profile(data)
+    user, is_new = await _upsert_oauth_user(
+        db,
+        "telegram",
+        profile["provider_user_id"],
+        profile["username"] or profile["first_name"],
+        profile["avatar_url"],
+    )
+    await db.commit()
+    await db.refresh(user)
+
+    access = await _issue_access(db, user)
+    redirect_response = RedirectResponse(
+        f"{settings.FRONTEND_URL.rstrip('/')}/telegram-auth"
+        f"?token={access}&is_new={'1' if is_new else '0'}"
+    )
+    _set_refresh_cookie(redirect_response, user.id)
+    return redirect_response
 
 
 @router.post("/telegram/verify", response_model=TokenResponse)

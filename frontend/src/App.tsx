@@ -12,6 +12,7 @@ import Tour from "./pages/Tour";
 import PredictMatch from "./pages/PredictMatch";
 import MatchPredictions from "./pages/MatchPredictions";
 import Profile from "./pages/Profile";
+import TelegramAuthCallback from "./pages/TelegramAuthCallback";
 import Admin from "./pages/admin/Admin";
 
 function Protected({ children }: { children: JSX.Element }) {
@@ -53,6 +54,7 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/auth/callback" element={<AuthCallback />} />
+      <Route path="/telegram-auth" element={<TelegramAuthCallback />} />
       <Route path="/setup-profile" element={<SetupProfile />} />
       <Route path="/tournament-join" element={<TournamentJoin />} />
 
