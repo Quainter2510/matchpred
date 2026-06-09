@@ -15,6 +15,7 @@ from app.schemas.prediction import (
     PredictionResult,
     TourPointsOut,
 )
+from app.services import audit
 
 router = APIRouter(prefix="/predictions", tags=["predictions"])
 
@@ -57,7 +58,29 @@ async def batch(
             continue
 
         pred = existing.get(item.match_id)
+        match_label = f"{match.home_team} — {match.away_team}"
         if pred:
+            changed = (
+                pred.predicted_home != item.home
+                or pred.predicted_away != item.away
+            )
+            if changed:
+                await audit.log_event(
+                    db,
+                    "prediction_updated",
+                    actor_id=user.id,
+                    actor_nickname=user.nickname,
+                    target_id=match.id,
+                    details={
+                        "match": match_label,
+                        "home": item.home,
+                        "away": item.away,
+                        "previous": {
+                            "home": pred.predicted_home,
+                            "away": pred.predicted_away,
+                        },
+                    },
+                )
             pred.predicted_home = item.home
             pred.predicted_away = item.away
         else:
@@ -68,6 +91,14 @@ async def batch(
                     predicted_home=item.home,
                     predicted_away=item.away,
                 )
+            )
+            await audit.log_event(
+                db,
+                "prediction_set",
+                actor_id=user.id,
+                actor_nickname=user.nickname,
+                target_id=match.id,
+                details={"match": match_label, "home": item.home, "away": item.away},
             )
         results.append(PredictionResult(match_id=item.match_id, accepted=True))
 
