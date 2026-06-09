@@ -48,6 +48,7 @@ async def sync_api(
             existing.kickoff_at = fx["kickoff_at"]
             existing.match_date = fx["match_date"]
             existing.stage = fx["stage"]
+            existing.group_name = fx["group_name"]
             existing.home_team = fx["home_team"]
             existing.away_team = fx["away_team"]
             existing.status = fx["status"]

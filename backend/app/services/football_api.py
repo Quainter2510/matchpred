@@ -49,24 +49,61 @@ async def _get(path: str, params: dict) -> dict:
         return data
 
 
-def _normalize_fixture(fx: dict) -> dict:
+def _normalize_fixture(fx: dict, groups: dict[str, str] | None = None) -> dict:
     fixture = fx["fixture"]
     teams = fx["teams"]
     goals = fx["goals"]
     league = fx.get("league", {})
     kickoff = datetime.fromisoformat(fixture["date"]).astimezone(timezone.utc)
     raw_status = fixture.get("status", {}).get("short", "NS")
+    stage = (league.get("round") or "group").lower().replace(" ", "_")[:40]
+    home = teams["home"]["name"]
+    away = teams["away"]["name"]
+    # Буква группы есть только у матчей группового этапа — берём из таблицы групп
+    # (раунд из API содержит лишь номер тура, напр. "group_stage_-_1").
+    group_name = None
+    if groups and "group" in stage:
+        group_name = groups.get(home) or groups.get(away)
     return {
         "api_football_id": fixture["id"],
         "kickoff_at": kickoff,
         "match_date": kickoff.date(),
-        "stage": (league.get("round") or "group").lower().replace(" ", "_")[:40],
-        "home_team": teams["home"]["name"],
-        "away_team": teams["away"]["name"],
+        "stage": stage,
+        "group_name": group_name,
+        "home_team": home,
+        "away_team": away,
         "home_score_ft": goals.get("home"),
         "away_score_ft": goals.get("away"),
         "status": _STATUS_MAP.get(raw_status, "scheduled"),
     }
+
+
+async def fetch_groups() -> dict[str, str]:
+    """Сопоставление «название сборной → буква группы» из /standings.
+
+    Раунд матча в API содержит только номер тура, без буквы группы, поэтому
+    группу берём из турнирной таблицы. Возвращает {} при недоступности данных
+    (например, до жеребьёвки) — тогда матчи останутся без group_name.
+    """
+    try:
+        data = await _get(
+            "/standings",
+            {
+                "league": settings.API_FOOTBALL_LEAGUE_ID,
+                "season": settings.API_FOOTBALL_SEASON,
+            },
+        )
+    except Exception:
+        return {}
+    out: dict[str, str] = {}
+    for league in data.get("response", []):
+        for group in league.get("league", {}).get("standings", []) or []:
+            for row in group:
+                raw = (row.get("group") or "").replace("Group", "").strip()
+                team = (row.get("team") or {}).get("name")
+                if team and raw:
+                    out[team] = raw[:20]
+    return out
 
 
 async def fetch_fixtures() -> list[dict]:
@@ -78,7 +115,8 @@ async def fetch_fixtures() -> list[dict]:
             "season": settings.API_FOOTBALL_SEASON,
         },
     )
-    return [_normalize_fixture(fx) for fx in data.get("response", [])]
+    groups = await fetch_groups()
+    return [_normalize_fixture(fx, groups) for fx in data.get("response", [])]
 
 
 # Бомбардир — это почти всегда нападающий, реже полузащитник. Поднимаем таких

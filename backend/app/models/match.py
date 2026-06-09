@@ -26,6 +26,7 @@ class Match(Base):
         DateTime(timezone=True), nullable=False
     )
     stage: Mapped[str] = mapped_column(String(40), nullable=False)
+    group_name: Mapped[str | None] = mapped_column(String(20), nullable=True)
     home_team: Mapped[str] = mapped_column(String(100), nullable=False)
     away_team: Mapped[str] = mapped_column(String(100), nullable=False)
     home_score_ft: Mapped[int | None] = mapped_column(Integer, nullable=True)

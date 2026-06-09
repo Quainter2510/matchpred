@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { Match } from "../api/endpoints";
 import { formatTime, isPast } from "../utils/dates";
+import { formatStage } from "../utils/stage";
 import Countdown from "./Countdown";
 import TeamName from "./TeamName";
 
@@ -12,7 +13,7 @@ export default function MatchCard({ match }: { match: Match }) {
   return (
     <div className="card flex flex-col gap-2">
       <div className="flex items-center justify-between text-xs text-slate-500">
-        <span>{formatTime(match.kickoff_at)} · {match.stage}</span>
+        <span>{formatTime(match.kickoff_at)} · {formatStage(match.stage, match.group_name)}</span>
         {!started ? <Countdown to={match.kickoff_at} /> : <span>{finished ? "Завершён" : "Идёт/закрыт"}</span>}
       </div>
       <div className="grid grid-cols-3 items-center gap-2">

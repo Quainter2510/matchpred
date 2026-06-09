@@ -27,6 +27,7 @@ export interface Match {
   match_date: string;
   kickoff_at: string;
   stage: string;
+  group_name: string | null;
   home_team: string;
   away_team: string;
   home_score_ft: number | null;

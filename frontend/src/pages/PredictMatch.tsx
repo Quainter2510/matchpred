@@ -6,6 +6,7 @@ import ScoreInput from "../components/ScoreInput";
 import Countdown from "../components/Countdown";
 import TeamName from "../components/TeamName";
 import { formatDate, formatTime, isPast } from "../utils/dates";
+import { formatStage } from "../utils/stage";
 import { previewPoints } from "../utils/scoring";
 
 export default function PredictMatch() {
@@ -56,7 +57,7 @@ export default function PredictMatch() {
       </button>
       <div className="card space-y-4 text-center">
         <div className="text-sm text-slate-500">
-          {formatDate(match.match_date)} · {formatTime(match.kickoff_at)} · {match.stage}
+          {formatDate(match.match_date)} · {formatTime(match.kickoff_at)} · {formatStage(match.stage, match.group_name)}
         </div>
         <div className="text-sm">
           Дедлайн: <Countdown to={match.kickoff_at} />

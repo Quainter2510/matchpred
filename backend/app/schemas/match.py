@@ -19,6 +19,7 @@ class MatchOut(BaseModel):
     match_date: date
     kickoff_at: datetime
     stage: str
+    group_name: str | None = None
     home_team: str
     away_team: str
     home_score_ft: int | None = None
