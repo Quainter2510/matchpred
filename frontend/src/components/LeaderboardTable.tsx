@@ -1,6 +1,14 @@
 import { LeaderboardEntry } from "../api/endpoints";
 import { useAuth } from "../store/auth";
 
+function StatusMark({ ok }: { ok: boolean }) {
+  return ok ? (
+    <span className="text-emerald-600" title="Указан">✓</span>
+  ) : (
+    <span className="text-red-500" title="Не указан">✗</span>
+  );
+}
+
 export default function LeaderboardTable({
   entries,
 }: {
@@ -15,6 +23,8 @@ export default function LeaderboardTable({
         <tr className="border-b text-left text-slate-500">
           <th className="py-2 w-10">#</th>
           <th>Игрок</th>
+          <th className="text-center w-12" title="Чемпион">🏆</th>
+          <th className="text-center w-12" title="Бомбардир">⚽</th>
           <th className="text-right">Очки</th>
           <th className="text-right w-16">Точных</th>
         </tr>
@@ -38,6 +48,8 @@ export default function LeaderboardTable({
               )}
               {e.nickname}
             </td>
+            <td className="text-center"><StatusMark ok={e.has_champion} /></td>
+            <td className="text-center"><StatusMark ok={e.has_scorer} /></td>
             <td className="text-right">{e.total_points}</td>
             <td className="text-right">{e.exact_scores_count}</td>
           </tr>

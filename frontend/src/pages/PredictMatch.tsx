@@ -4,6 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/endpoints";
 import ScoreInput from "../components/ScoreInput";
 import Countdown from "../components/Countdown";
+import TeamName from "../components/TeamName";
 import { formatDate, formatTime, isPast } from "../utils/dates";
 import { previewPoints } from "../utils/scoring";
 
@@ -62,13 +63,13 @@ export default function PredictMatch() {
         </div>
 
         <div className="grid grid-cols-3 items-center gap-2">
-          <div className="text-right font-semibold">{match.home_team}</div>
+          <TeamName team={match.home_team} flagSide="right" className="justify-end text-right font-semibold" />
           <div className="flex items-center justify-center gap-2">
             <ScoreInput value={home} onChange={setHome} disabled={closed} />
             <span>:</span>
             <ScoreInput value={away} onChange={setAway} disabled={closed} />
           </div>
-          <div className="text-left font-semibold">{match.away_team}</div>
+          <TeamName team={match.away_team} className="justify-start text-left font-semibold" />
         </div>
 
         {closed ? (

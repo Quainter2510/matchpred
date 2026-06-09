@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import require_player
-from app.models import TournamentMember, User
+from app.models import SpecialPrediction, TournamentMember, User
 from app.redis_client import (
     LEADERBOARD_CACHE_KEY,
     LEADERBOARD_CACHE_TTL,
@@ -20,8 +20,9 @@ router = APIRouter(prefix="/leaderboard", tags=["leaderboard"])
 async def _compute(db: AsyncSession) -> list[dict]:
     rows = (
         await db.execute(
-            select(TournamentMember, User)
+            select(TournamentMember, User, SpecialPrediction)
             .join(User, User.id == TournamentMember.user_id)
+            .outerjoin(SpecialPrediction, SpecialPrediction.user_id == User.id)
             .order_by(
                 TournamentMember.total_points.desc(),
                 TournamentMember.exact_scores_count.desc(),
@@ -30,7 +31,7 @@ async def _compute(db: AsyncSession) -> list[dict]:
         )
     ).all()
     entries = []
-    for place, (m, u) in enumerate(rows, start=1):
+    for place, (m, u, sp) in enumerate(rows, start=1):
         entries.append(
             {
                 "place": place,
@@ -39,6 +40,8 @@ async def _compute(db: AsyncSession) -> list[dict]:
                 "avatar_url": u.avatar_url,
                 "total_points": m.total_points,
                 "exact_scores_count": m.exact_scores_count,
+                "has_champion": bool(sp and sp.champion_team),
+                "has_scorer": bool(sp and sp.top_scorer_api_id),
             }
         )
     return entries

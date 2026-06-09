@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { Match } from "../api/endpoints";
 import { formatTime, isPast } from "../utils/dates";
 import Countdown from "./Countdown";
+import TeamName from "./TeamName";
 
 export default function MatchCard({ match }: { match: Match }) {
   const started = isPast(match.kickoff_at);
@@ -15,13 +16,13 @@ export default function MatchCard({ match }: { match: Match }) {
         {!started ? <Countdown to={match.kickoff_at} /> : <span>{finished ? "Завершён" : "Идёт/закрыт"}</span>}
       </div>
       <div className="grid grid-cols-3 items-center gap-2">
-        <div className="text-right font-medium">{match.home_team}</div>
+        <TeamName team={match.home_team} flagSide="right" className="justify-end text-right font-medium" />
         <div className="text-center text-xl font-bold">
           {finished
             ? `${match.home_score_ft} : ${match.away_score_ft}`
             : "vs"}
         </div>
-        <div className="text-left font-medium">{match.away_team}</div>
+        <TeamName team={match.away_team} className="justify-start text-left font-medium" />
       </div>
 
       {p && (

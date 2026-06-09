@@ -52,6 +52,8 @@ export interface LeaderboardEntry {
   avatar_url: string | null;
   total_points: number;
   exact_scores_count: number;
+  has_champion: boolean;
+  has_scorer: boolean;
 }
 
 export interface SpecialPrediction {
