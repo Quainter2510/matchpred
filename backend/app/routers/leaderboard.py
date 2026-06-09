@@ -42,6 +42,8 @@ async def _compute(db: AsyncSession) -> list[dict]:
                 "exact_scores_count": m.exact_scores_count,
                 "has_champion": bool(sp and sp.champion_team),
                 "has_scorer": bool(sp and sp.top_scorer_api_id),
+                "champion_correct": bool(sp and sp.champion_points),
+                "scorer_correct": bool(sp and sp.scorer_points),
             }
         )
     return entries

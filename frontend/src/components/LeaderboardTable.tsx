@@ -1,8 +1,17 @@
 import { LeaderboardEntry } from "../api/endpoints";
 import { useAuth } from "../store/auth";
 
-function StatusMark({ ok }: { ok: boolean }) {
-  return ok ? (
+function StatusMark({ set, correct }: { set: boolean; correct: boolean }) {
+  if (correct)
+    return (
+      <span
+        className="inline-flex items-center justify-center rounded bg-emerald-500 px-1.5 font-bold text-white"
+        title="Засчитан"
+      >
+        ✓
+      </span>
+    );
+  return set ? (
     <span className="text-emerald-600" title="Указан">✓</span>
   ) : (
     <span className="text-red-500" title="Не указан">✗</span>
@@ -48,8 +57,8 @@ export default function LeaderboardTable({
               )}
               {e.nickname}
             </td>
-            <td className="text-center"><StatusMark ok={e.has_champion} /></td>
-            <td className="text-center"><StatusMark ok={e.has_scorer} /></td>
+            <td className="text-center"><StatusMark set={e.has_champion} correct={e.champion_correct} /></td>
+            <td className="text-center"><StatusMark set={e.has_scorer} correct={e.scorer_correct} /></td>
             <td className="text-right">{e.total_points}</td>
             <td className="text-right">{e.exact_scores_count}</td>
           </tr>

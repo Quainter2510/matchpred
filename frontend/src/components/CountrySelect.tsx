@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { COUNTRIES, findCountry } from "../utils/countries";
+import Flag from "./Flag";
 
 interface Props {
   /** Хранимое каноническое (английское) имя сборной или "". */
@@ -72,7 +73,7 @@ export default function CountrySelect({ value, onChange, disabled }: Props) {
                 setOpen(false);
               }}
             >
-              <span aria-hidden>{c.flag}</span>
+              <Flag code={c.code} title={c.ru} />
               <span>{c.ru}</span>
             </button>
           ))}

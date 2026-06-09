@@ -54,6 +54,8 @@ export interface LeaderboardEntry {
   exact_scores_count: number;
   has_champion: boolean;
   has_scorer: boolean;
+  champion_correct: boolean;
+  scorer_correct: boolean;
 }
 
 export interface SpecialPrediction {

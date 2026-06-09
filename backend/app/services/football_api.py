@@ -82,25 +82,27 @@ async def fetch_fixtures() -> list[dict]:
 
 
 async def search_players(query: str) -> list[dict]:
-    """Player autocomplete for the top-scorer special prediction."""
-    data = await _get(
-        "/players",
-        {
-            "league": settings.API_FOOTBALL_LEAGUE_ID,
-            "season": settings.API_FOOTBALL_SEASON,
-            "search": query,
-        },
-    )
+    """Player autocomplete for the top-scorer special prediction.
+
+    Uses the name-based `/players/profiles` endpoint instead of
+    `/players?league=&season=`: before the tournament the WC league/season has
+    no squads loaded, so a league/season-scoped search returns nothing. Profile
+    search works by surname across all of API-Football's player database.
+    """
+    data = await _get("/players/profiles", {"search": query})
     out: list[dict] = []
     for item in data.get("response", []):
         player = item.get("player", {})
-        stats = item.get("statistics", [{}])
-        team = stats[0].get("team", {}).get("name") if stats else None
+        if not player.get("id"):
+            continue
+        name = player.get("name") or " ".join(
+            filter(None, [player.get("firstname"), player.get("lastname")])
+        )
         out.append(
             {
                 "api_id": player.get("id"),
-                "name": player.get("name"),
-                "team": team,
+                "name": name,
+                "team": player.get("nationality"),
                 "photo": player.get("photo"),
             }
         )

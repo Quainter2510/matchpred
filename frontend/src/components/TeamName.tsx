@@ -1,4 +1,5 @@
 import { findCountry } from "../utils/countries";
+import Flag from "./Flag";
 
 interface Props {
   team: string | null | undefined;
@@ -7,17 +8,16 @@ interface Props {
   flagSide?: "left" | "right";
 }
 
-/** Название сборной на русском + флаг страны. */
+/** Название сборной на русском + флаг страны (картинкой). */
 export default function TeamName({ team, className, flagSide = "left" }: Props) {
   if (!team) return null;
   const c = findCountry(team);
   const name = c?.ru ?? team;
-  const flag = c?.flag;
   return (
     <span className={`inline-flex items-center gap-1.5 ${className ?? ""}`}>
-      {flag && flagSide === "left" && <span aria-hidden>{flag}</span>}
+      {c && flagSide === "left" && <Flag code={c.code} title={name} />}
       <span>{name}</span>
-      {flag && flagSide === "right" && <span aria-hidden>{flag}</span>}
+      {c && flagSide === "right" && <Flag code={c.code} title={name} />}
     </span>
   );
 }

@@ -12,6 +12,8 @@ class LeaderboardEntry(BaseModel):
     exact_scores_count: int
     has_champion: bool = False
     has_scorer: bool = False
+    champion_correct: bool = False
+    scorer_correct: bool = False
 
 
 class MyLeaderboardEntry(LeaderboardEntry):

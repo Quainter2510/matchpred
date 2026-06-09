@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, Match } from "../../api/endpoints";
 import { formatDate, formatTime } from "../../utils/dates";
-import { teamLabel } from "../../utils/countries";
+import TeamName from "../../components/TeamName";
 
 function ResultRow({ match }: { match: Match }) {
   const qc = useQueryClient();
@@ -20,7 +20,13 @@ function ResultRow({ match }: { match: Match }) {
       <td className="py-2 text-xs text-slate-500">
         {formatDate(match.match_date)} {formatTime(match.kickoff_at)}
       </td>
-      <td>{teamLabel(match.home_team)} — {teamLabel(match.away_team)}</td>
+      <td>
+        <span className="inline-flex flex-wrap items-center gap-1.5">
+          <TeamName team={match.home_team} />
+          <span className="text-slate-400">—</span>
+          <TeamName team={match.away_team} />
+        </span>
+      </td>
       <td>
         <input className="w-12 rounded border px-1 text-center" value={h} onChange={(e) => setH(e.target.value)} />
         :

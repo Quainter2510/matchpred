@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/endpoints";
-import { teamLabel } from "../utils/countries";
+import TeamName from "../components/TeamName";
 
 export default function MatchPredictions() {
   const { id } = useParams<{ id: string }>();
@@ -23,10 +23,14 @@ export default function MatchPredictions() {
         ← Назад
       </button>
       {match.data && (
-        <h1 className="text-xl font-bold">
-          {teamLabel(match.data.home_team)} {match.data.home_score_ft ?? ""}
-          {match.data.status === "finished" ? " : " : " — "}
-          {match.data.away_score_ft ?? ""} {teamLabel(match.data.away_team)}
+        <h1 className="flex flex-wrap items-center gap-2 text-xl font-bold">
+          <TeamName team={match.data.home_team} />
+          <span>
+            {match.data.home_score_ft ?? ""}
+            {match.data.status === "finished" ? " : " : " — "}
+            {match.data.away_score_ft ?? ""}
+          </span>
+          <TeamName team={match.data.away_team} />
         </h1>
       )}
       <div className="card">
