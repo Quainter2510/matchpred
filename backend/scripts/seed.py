@@ -26,19 +26,30 @@ from app.security import hash_password
 from app.services import football_api
 
 
-async def upsert_matches(db) -> int:
+async def upsert_matches(db) -> tuple[int, str]:
     if not settings.API_FOOTBALL_KEY:
-        print("WARN: API_FOOTBALL_KEY is empty — skipping fixture load.")
-        return 0
+        msg = "API_FOOTBALL_KEY is not set in environment — fixture load skipped."
+        print(f"WARN: {msg}")
+        return 0, msg
     try:
         fixtures = await football_api.fetch_fixtures()
     except Exception as exc:
-        print(f"WARN: could not load fixtures from API-Football: {exc}")
-        return 0
+        msg = f"API-Football request failed: {exc}"
+        print(f"WARN: {msg}")
+        return 0, msg
+    count = len(fixtures)
     print(
-        f"API-Football returned {len(fixtures)} fixtures "
+        f"API-Football returned {count} fixtures "
         f"(league={settings.API_FOOTBALL_LEAGUE_ID}, season={settings.API_FOOTBALL_SEASON})."
     )
+    if count == 0:
+        msg = (
+            f"API-Football returned 0 fixtures for "
+            f"league={settings.API_FOOTBALL_LEAGUE_ID}, season={settings.API_FOOTBALL_SEASON}. "
+            "Check that the league/season values are correct."
+        )
+        print(f"WARN: {msg}")
+        return 0, msg
     created = 0
     for fx in fixtures:
         existing = await db.scalar(
@@ -55,11 +66,11 @@ async def upsert_matches(db) -> int:
             db.add(Match(**fx))
             created += 1
     await db.flush()
-    return created
+    return created, ""
 
 
 async def ensure_tournament(
-    db, name: str, password: str | None, first_match_at: str | None
+    db, name: str, password: str | None, first_match_at: str | None, no_matches_reason: str = ""
 ) -> str | None:
     existing = await db.scalar(select(Tournament).limit(1))
     if existing:
@@ -70,12 +81,19 @@ async def ensure_tournament(
     if earliest is None and first_match_at:
         earliest = datetime.fromisoformat(first_match_at)
     if earliest is None:
+        reason_block = (
+            f"\n\nПричина: {no_matches_reason}" if no_matches_reason else ""
+        )
         raise SystemExit(
-            "No matches loaded and --first-match-at not provided.\n"
-            "Either fix API-Football settings and re-run, or pass the deadline "
-            "manually, e.g.:\n"
-            "  python -m scripts.seed --first-match-at 2026-06-11T16:00:00+00:00\n"
-            "Matches can be added later via the Admin panel or /admin/sync."
+            "ERROR: нет матчей в БД и флаг --first-match-at не передан — "
+            "невозможно определить дату первого матча (deadline предсказаний)."
+            f"{reason_block}\n\n"
+            "Варианты решения:\n"
+            "  1. Проверьте API_FOOTBALL_KEY, API_FOOTBALL_LEAGUE_ID, API_FOOTBALL_SEASON\n"
+            "     и перезапустите: python -m scripts.seed\n"
+            "  2. Укажите дату вручную:\n"
+            "     python -m scripts.seed --first-match-at 2026-06-11T16:00:00+00:00\n"
+            "  Матчи можно добавить позже через Admin-панель или /admin/sync."
         )
 
     password = password or secrets.token_urlsafe(8)
@@ -91,8 +109,8 @@ async def ensure_tournament(
 
 async def main(name: str, password: str | None, first_match_at: str | None) -> None:
     async with AsyncSessionLocal() as db:
-        created = await upsert_matches(db)
-        generated = await ensure_tournament(db, name, password, first_match_at)
+        created, no_matches_reason = await upsert_matches(db)
+        generated = await ensure_tournament(db, name, password, first_match_at, no_matches_reason)
         await db.commit()
     print(f"Matches created: {created}")
     if generated:
