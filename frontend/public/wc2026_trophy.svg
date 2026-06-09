@@ -2,30 +2,23 @@
   <title>Trophy icon WC 2026</title>
   <desc>Minimalist FIFA World Cup 2026 trophy icon</desc>
 
-  <!-- background circle -->
   <circle cx="130" cy="130" r="130" fill="#0f1f2e"/>
 
-  <!-- cup body -->
   <path d="M90,60 L170,60 L158,132 Q154,158 130,166 Q106,158 102,132 Z"
-        fill="none" stroke="#e8c54a" stroke-width="2.5" stroke-linejoin="round"/>
+        fill="none" stroke="#e8c54a" stroke-width="14" stroke-linejoin="round" stroke-linecap="round"/>
 
-  <!-- handles -->
   <path d="M90,68 Q62,68 62,92 Q62,116 90,120"
-        fill="none" stroke="#e8c54a" stroke-width="2"/>
+        fill="none" stroke="#e8c54a" stroke-width="13" stroke-linecap="round"/>
   <path d="M170,68 Q198,68 198,92 Q198,116 170,120"
-        fill="none" stroke="#e8c54a" stroke-width="2"/>
+        fill="none" stroke="#e8c54a" stroke-width="13" stroke-linecap="round"/>
 
-  <!-- stem -->
-  <line x1="130" y1="166" x2="130" y2="196" stroke="#e8c54a" stroke-width="2.5"/>
+  <line x1="130" y1="166" x2="130" y2="196" stroke="#e8c54a" stroke-width="14" stroke-linecap="round"/>
 
-  <!-- base -->
-  <rect x="102" y="196" width="56" height="10" rx="2" fill="#e8c54a"/>
-  <rect x="90" y="206" width="80" height="6" rx="2" fill="#e8c54a"/>
+  <rect x="94" y="196" width="72" height="15" rx="4" fill="#e8c54a"/>
+  <rect x="80" y="211" width="100" height="11" rx="4" fill="#e8c54a"/>
 
-  <!-- star -->
-  <text x="130" y="122" text-anchor="middle" font-size="32" fill="#e8c54a" font-family="serif">★</text>
+  <text x="130" y="124" text-anchor="middle" font-size="38" fill="#e8c54a" font-family="serif">★</text>
 
-  <!-- year -->
-  <text x="130" y="242" text-anchor="middle" font-size="14" font-weight="500"
+  <text x="130" y="246" text-anchor="middle" font-size="15" font-weight="700"
         fill="#e8c54a" font-family="sans-serif">2026</text>
 </svg>

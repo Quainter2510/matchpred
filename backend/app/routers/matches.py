@@ -189,22 +189,29 @@ async def set_result(
     if not match:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Match not found")
 
+    had_result = match.home_score_ft is not None and match.away_score_ft is not None
+    prev = {"home": match.home_score_ft, "away": match.away_score_ft}
+
     match.home_score_ft = payload.home_score_ft
     match.away_score_ft = payload.away_score_ft
     match.status = "finished"
 
     scored = await score_match(db, match)
+    details = {
+        "match": f"{match.home_team} — {match.away_team}",
+        "home": payload.home_score_ft,
+        "away": payload.away_score_ft,
+        "scored": scored,
+    }
+    if had_result:
+        details["previous"] = prev
     await audit.log_event(
         db,
-        "match_result_set",
+        "match_result_updated" if had_result else "match_result_set",
         actor_id=user.id,
         actor_nickname=user.nickname,
         target_id=match.id,
-        details={
-            "home": payload.home_score_ft,
-            "away": payload.away_score_ft,
-            "scored": scored,
-        },
+        details=details,
     )
     await db.commit()
     await db.refresh(match)

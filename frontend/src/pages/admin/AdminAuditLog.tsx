@@ -2,20 +2,24 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../api/endpoints";
 
-const EVENT_TYPES = [
-  "",
-  "user_registered",
-  "superadmin_assigned",
-  "superadmin_transferred",
-  "role_changed",
-  "member_removed",
-  "match_result_set",
-  "scores_recalculated",
-  "scorer_result_set",
-  "tournament_password_changed",
-  "api_sync",
-  "nickname_changed",
-];
+const EVENT_LABELS: Record<string, string> = {
+  user_registered: "Регистрация",
+  superadmin_assigned: "Назначен суперадмин",
+  superadmin_transferred: "Передана роль суперадмина",
+  role_changed: "Изменена роль",
+  member_removed: "Удалён участник",
+  match_result_set: "Добавлен счёт",
+  match_result_updated: "Изменён счёт",
+  scores_recalculated: "Пересчёт очков",
+  scorer_result_set: "Итоговый бомбардир (начисление)",
+  champion_selected: "Выбран чемпион",
+  top_scorer_selected: "Выбран бомбардир",
+  tournament_password_changed: "Смена пароля турнира",
+  api_sync: "Синхронизация с API",
+  nickname_changed: "Смена никнейма",
+};
+
+const EVENT_TYPES = ["", ...Object.keys(EVENT_LABELS)];
 
 const PAGE = 50;
 
@@ -46,7 +50,7 @@ export default function AdminAuditLog() {
         >
           {EVENT_TYPES.map((t) => (
             <option key={t} value={t}>
-              {t || "Все события"}
+              {t ? EVENT_LABELS[t] ?? t : "Все события"}
             </option>
           ))}
         </select>
@@ -72,9 +76,7 @@ export default function AdminAuditLog() {
                     {new Date(e.created_at).toLocaleString("ru-RU")}
                   </td>
                   <td>{e.actor_nickname || "система"}</td>
-                  <td>
-                    <code className="text-xs">{e.event_type}</code>
-                  </td>
+                  <td>{EVENT_LABELS[e.event_type] ?? e.event_type}</td>
                   <td className="text-xs text-slate-500">
                     {e.details ? JSON.stringify(e.details) : "—"}
                   </td>

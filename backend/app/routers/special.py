@@ -13,7 +13,7 @@ from app.schemas.special import (
     SpecialPredictionPublic,
     SpecialPredictionUpdate,
 )
-from app.services import football_api
+from app.services import audit, football_api
 
 router = APIRouter(tags=["special"])
 
@@ -58,6 +58,8 @@ async def update_special(
     sp = await db.scalar(
         select(SpecialPrediction).where(SpecialPrediction.user_id == user.id)
     )
+    prev_champion = sp.champion_team if sp else None
+    prev_scorer = sp.top_scorer_api_id if sp else None
     if not sp:
         sp = SpecialPrediction(user_id=user.id, locked_at=deadline)
         db.add(sp)
@@ -65,6 +67,29 @@ async def update_special(
     sp.top_scorer_name = payload.top_scorer_name
     sp.top_scorer_api_id = payload.top_scorer_api_id
     sp.locked_at = deadline
+
+    # Журнал: пишем только при реальном изменении выбора.
+    if payload.champion_team and payload.champion_team != prev_champion:
+        await audit.log_event(
+            db,
+            "champion_selected",
+            actor_id=user.id,
+            actor_nickname=user.nickname,
+            target_id=user.id,
+            details={"champion": payload.champion_team},
+        )
+    if payload.top_scorer_api_id and payload.top_scorer_api_id != prev_scorer:
+        await audit.log_event(
+            db,
+            "top_scorer_selected",
+            actor_id=user.id,
+            actor_nickname=user.nickname,
+            target_id=user.id,
+            details={
+                "player_api_id": payload.top_scorer_api_id,
+                "player_name": payload.top_scorer_name,
+            },
+        )
     await db.commit()
     await db.refresh(sp)
     return SpecialPredictionOut(
