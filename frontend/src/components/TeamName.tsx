@@ -16,7 +16,7 @@ export default function TeamName({ team, className, flagSide = "left" }: Props) 
   return (
     <span className={`inline-flex items-center gap-1.5 ${className ?? ""}`}>
       {c && flagSide === "left" && <Flag code={c.code} title={name} />}
-      <span>{name}</span>
+      <span className="min-w-0 break-words">{name}</span>
       {c && flagSide === "right" && <Flag code={c.code} title={name} />}
     </span>
   );
