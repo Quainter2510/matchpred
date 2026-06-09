@@ -40,7 +40,13 @@ async def _get(path: str, params: dict) -> dict:
     ) as client:
         resp = await client.get(path, params=params, headers=_headers())
         resp.raise_for_status()
-        return resp.json()
+        data = resp.json()
+        # api-sports returns HTTP 200 with a non-empty `errors` field on
+        # auth/quota/parameter problems. Surface it instead of returning [].
+        errors = data.get("errors")
+        if errors:
+            raise RuntimeError(f"API-Football error: {errors}")
+        return data
 
 
 def _normalize_fixture(fx: dict) -> dict:
