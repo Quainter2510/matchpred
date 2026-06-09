@@ -12,6 +12,7 @@ export interface MatchDay {
   date: string;
   match_count: number;
   my_predictions_count: number;
+  first_kickoff_at: string;
 }
 
 export interface MyPrediction {

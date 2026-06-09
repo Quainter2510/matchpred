@@ -55,7 +55,7 @@ async def match_days(
 ):
     counts = (
         await db.execute(
-            select(Match.match_date, func.count())
+            select(Match.match_date, func.count(), func.min(Match.kickoff_at))
             .group_by(Match.match_date)
             .order_by(Match.match_date)
         )
@@ -72,8 +72,13 @@ async def match_days(
         ).all()
     )
     return [
-        MatchDay(date=d, match_count=c, my_predictions_count=my.get(d, 0))
-        for d, c in counts
+        MatchDay(
+            date=d,
+            match_count=c,
+            my_predictions_count=my.get(d, 0),
+            first_kickoff_at=first_kickoff,
+        )
+        for d, c, first_kickoff in counts
     ]
 
 

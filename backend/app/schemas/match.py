@@ -32,6 +32,7 @@ class MatchDay(BaseModel):
     date: date
     match_count: int
     my_predictions_count: int
+    first_kickoff_at: datetime
 
 
 class MatchCreate(BaseModel):
