@@ -43,3 +43,43 @@ async def log_event(
             details=details,
         )
     )
+
+
+async def log_match_result(
+    db: AsyncSession,
+    *,
+    match_id: uuid.UUID,
+    home_team: str,
+    away_team: str,
+    new_home: int | None,
+    new_away: int | None,
+    prev_home: int | None,
+    prev_away: int | None,
+    actor_id: uuid.UUID | None = None,
+    actor_nickname: str | None = None,
+) -> None:
+    """Журнал добавления/изменения счёта при синхронизации.
+
+    No-op, если счёта нет или он не изменился (чтобы не засорять журнал на
+    каждом опросе API уже завершённых матчей).
+    """
+    if new_home is None or new_away is None:
+        return
+    had_result = prev_home is not None and prev_away is not None
+    if had_result and prev_home == new_home and prev_away == new_away:
+        return
+    details: dict = {
+        "match": f"{home_team} — {away_team}",
+        "home": new_home,
+        "away": new_away,
+    }
+    if had_result:
+        details["previous"] = {"home": prev_home, "away": prev_away}
+    await log_event(
+        db,
+        "match_result_updated" if had_result else "match_result_set",
+        actor_id=actor_id,
+        actor_nickname=actor_nickname,
+        target_id=match_id,
+        details=details,
+    )

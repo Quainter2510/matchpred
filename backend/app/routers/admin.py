@@ -1,6 +1,11 @@
+import csv
+import io
+import json
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,6 +34,24 @@ from app.services.recalc import recalculate_all, score_top_scorer
 
 router = APIRouter(tags=["admin"])
 
+# Русские названия событий для выгрузки журнала (синхронно с фронтом).
+EVENT_LABELS_RU = {
+    "user_registered": "Регистрация",
+    "superadmin_assigned": "Назначен суперадмин",
+    "superadmin_transferred": "Передана роль суперадмина",
+    "role_changed": "Изменена роль",
+    "member_removed": "Удалён участник",
+    "match_result_set": "Добавлен счёт",
+    "match_result_updated": "Изменён счёт",
+    "scores_recalculated": "Пересчёт очков",
+    "scorer_result_set": "Итоговый бомбардир (начисление)",
+    "champion_selected": "Выбран чемпион",
+    "top_scorer_selected": "Выбран бомбардир",
+    "tournament_password_changed": "Смена пароля турнира",
+    "api_sync": "Синхронизация с API",
+    "nickname_changed": "Смена никнейма",
+}
+
 
 # ---------------- Sync & recalc ----------------
 @router.post("/admin/sync")
@@ -54,11 +77,39 @@ async def sync_api(
             existing.away_team = fx["away_team"]
             existing.status = fx["status"]
             if fx["status"] == "finished":
+                prev_home, prev_away = existing.home_score_ft, existing.away_score_ft
                 existing.home_score_ft = fx["home_score_ft"]
                 existing.away_score_ft = fx["away_score_ft"]
+                await audit.log_match_result(
+                    db,
+                    match_id=existing.id,
+                    home_team=existing.home_team,
+                    away_team=existing.away_team,
+                    new_home=fx["home_score_ft"],
+                    new_away=fx["away_score_ft"],
+                    prev_home=prev_home,
+                    prev_away=prev_away,
+                    actor_id=user.id,
+                    actor_nickname=user.nickname,
+                )
             updated += 1
         else:
-            db.add(Match(**fx))
+            match = Match(**fx)
+            db.add(match)
+            if fx["status"] == "finished":
+                await db.flush()
+                await audit.log_match_result(
+                    db,
+                    match_id=match.id,
+                    home_team=match.home_team,
+                    away_team=match.away_team,
+                    new_home=fx["home_score_ft"],
+                    new_away=fx["away_score_ft"],
+                    prev_home=None,
+                    prev_away=None,
+                    actor_id=user.id,
+                    actor_nickname=user.nickname,
+                )
             created += 1
 
     await audit.log_event(
@@ -260,3 +311,45 @@ async def audit_log(
     stmt = stmt.limit(limit).offset(offset)
     rows = (await db.execute(stmt)).scalars().all()
     return [AuditLogOut.model_validate(r, from_attributes=True) for r in rows]
+
+
+@router.get("/admin/audit-log/export")
+async def export_audit_log(
+    event_type: str | None = None,
+    actor_id: uuid.UUID | None = None,
+    user: User = Depends(require_superadmin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Выгрузка всего журнала (с учётом фильтров) в CSV-файл."""
+    stmt = select(AuditLog).order_by(AuditLog.created_at.desc())
+    if event_type:
+        stmt = stmt.where(AuditLog.event_type == event_type)
+    if actor_id:
+        stmt = stmt.where(AuditLog.actor_id == actor_id)
+    rows = (await db.execute(stmt)).scalars().all()
+
+    buf = io.StringIO()
+    writer = csv.writer(buf, delimiter=";")
+    writer.writerow(
+        ["Время (UTC)", "Инициатор", "Событие", "Код", "Объект", "Детали"]
+    )
+    for r in rows:
+        writer.writerow(
+            [
+                r.created_at.isoformat() if r.created_at else "",
+                r.actor_nickname or "система",
+                EVENT_LABELS_RU.get(r.event_type, r.event_type),
+                r.event_type,
+                str(r.target_id) if r.target_id else "",
+                json.dumps(r.details, ensure_ascii=False) if r.details else "",
+            ]
+        )
+
+    # BOM, чтобы Excel корректно прочитал кириллицу в UTF-8.
+    content = chr(0xFEFF) + buf.getvalue()
+    filename = f"audit-log-{datetime.now(timezone.utc):%Y%m%d-%H%M}.csv"
+    return Response(
+        content=content,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

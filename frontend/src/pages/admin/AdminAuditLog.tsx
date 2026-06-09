@@ -26,6 +26,26 @@ const PAGE = 50;
 export default function AdminAuditLog() {
   const [eventType, setEventType] = useState("");
   const [offset, setOffset] = useState(0);
+  const [exporting, setExporting] = useState(false);
+
+  const exportCsv = async () => {
+    setExporting(true);
+    try {
+      const blob = await api.exportAuditLog({
+        event_type: eventType || undefined,
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `audit-log-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      alert("Не удалось выгрузить журнал");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const { data, isLoading } = useQuery({
     queryKey: ["audit", eventType, offset],
@@ -54,6 +74,13 @@ export default function AdminAuditLog() {
             </option>
           ))}
         </select>
+        <button
+          className="btn-ghost"
+          onClick={exportCsv}
+          disabled={exporting}
+        >
+          {exporting ? "Выгрузка…" : "Скачать CSV"}
+        </button>
       </div>
 
       <div className="card overflow-x-auto">

@@ -51,11 +51,35 @@ async def sync_tick(force: bool = False) -> None:
                 existing.away_team = fx["away_team"]
                 existing.status = fx["status"]
                 if fx["status"] == "finished":
+                    prev_home, prev_away = existing.home_score_ft, existing.away_score_ft
                     existing.home_score_ft = fx["home_score_ft"]
                     existing.away_score_ft = fx["away_score_ft"]
+                    await audit.log_match_result(
+                        db,
+                        match_id=existing.id,
+                        home_team=existing.home_team,
+                        away_team=existing.away_team,
+                        new_home=fx["home_score_ft"],
+                        new_away=fx["away_score_ft"],
+                        prev_home=prev_home,
+                        prev_away=prev_away,
+                    )
                 updated += 1
             else:
-                db.add(Match(**fx))
+                match = Match(**fx)
+                db.add(match)
+                if fx["status"] == "finished":
+                    await db.flush()
+                    await audit.log_match_result(
+                        db,
+                        match_id=match.id,
+                        home_team=match.home_team,
+                        away_team=match.away_team,
+                        new_home=fx["home_score_ft"],
+                        new_away=fx["away_score_ft"],
+                        prev_home=None,
+                        prev_away=None,
+                    )
                 created += 1
         await audit.log_event(
             db, "api_sync", details={"created": created, "updated": updated, "auto": True}

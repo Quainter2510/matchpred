@@ -165,4 +165,8 @@ export const api = {
     client.post("/admin/superadmin/transfer", { target_user_id }).then((r) => r.data),
   auditLog: (params: { event_type?: string; limit?: number; offset?: number }) =>
     client.get<AuditEntry[]>("/admin/audit-log", { params }).then((r) => r.data),
+  exportAuditLog: (params: { event_type?: string }) =>
+    client
+      .get("/admin/audit-log/export", { params, responseType: "blob" })
+      .then((r) => r.data as Blob),
 };
