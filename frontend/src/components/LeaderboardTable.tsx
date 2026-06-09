@@ -35,8 +35,8 @@ export default function LeaderboardTable({
           <th className="text-center w-12" title="Участие подтверждено">✅</th>
           <th className="text-center w-12" title="Чемпион">🏆</th>
           <th className="text-center w-12" title="Бомбардир">⚽</th>
-          <th className="text-right">Очки</th>
-          <th className="text-right w-16">Точных</th>
+          <th className="text-center">Очки</th>
+          <th className="text-center w-16">Точных</th>
         </tr>
       </thead>
       <tbody>
@@ -67,8 +67,8 @@ export default function LeaderboardTable({
             </td>
             <td className="text-center"><StatusMark set={e.has_champion} correct={e.champion_correct} /></td>
             <td className="text-center"><StatusMark set={e.has_scorer} correct={e.scorer_correct} /></td>
-            <td className="text-right">{e.total_points}</td>
-            <td className="text-right">{e.exact_scores_count}</td>
+            <td className="text-center">{e.total_points}</td>
+            <td className="text-center">{e.exact_scores_count}</td>
           </tr>
         ))}
       </tbody>
