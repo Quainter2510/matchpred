@@ -22,8 +22,16 @@ export default function PlayerSearch({ value, onSelect, disabled, highlight }: P
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  // Подхватываем сохранённое имя, когда оно приходит асинхронно (после
+  // перезагрузки страницы данные грузятся уже после монтирования компонента).
   useEffect(() => {
-    if (q.length < 3 || disabled) {
+    setQ(value.name || "");
+  }, [value.name, value.id]);
+
+  useEffect(() => {
+    // Не ищем, пока введённый текст совпадает с уже выбранным игроком —
+    // иначе при загрузке/после выбора впустую открывался бы список.
+    if (q.length < 3 || disabled || q === (value.name || "")) {
       setResults([]);
       return;
     }
@@ -40,7 +48,7 @@ export default function PlayerSearch({ value, onSelect, disabled, highlight }: P
       }
     }, 350);
     return () => clearTimeout(t);
-  }, [q, disabled]);
+  }, [q, disabled, value.name]);
 
   return (
     <div className="relative">
