@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
@@ -17,7 +18,7 @@ from app.schemas.leaderboard import LeaderboardEntry, MyLeaderboardEntry
 router = APIRouter(prefix="/rooms/{room_id}/leaderboard", tags=["leaderboard"])
 
 
-async def _compute(db: AsyncSession, room_id) -> list[dict]:
+async def _compute(db: AsyncSession, room_id, started: bool) -> list[dict]:
     rows = (
         await db.execute(
             select(RoomMember, User, SpecialPrediction)
@@ -50,12 +51,15 @@ async def _compute(db: AsyncSession, room_id) -> list[dict]:
                 "champion_correct": bool(sp and sp.champion_points),
                 "scorer_correct": bool(sp and sp.scorer_points),
                 "participation_confirmed": m.participation_confirmed,
+                # Actual picks revealed only after the tournament starts.
+                "champion_team": sp.champion_team if (started and sp) else None,
+                "top_scorer_name": sp.top_scorer_name if (started and sp) else None,
             }
         )
     return entries
 
 
-async def _get_leaderboard(db: AsyncSession, room_id) -> list[dict]:
+async def _get_leaderboard(db: AsyncSession, room_id, started: bool) -> list[dict]:
     key = leaderboard_cache_key(room_id)
     try:
         cached = await redis_client.get(key)
@@ -63,7 +67,7 @@ async def _get_leaderboard(db: AsyncSession, room_id) -> list[dict]:
             return json.loads(cached)
     except Exception:
         pass
-    entries = await _compute(db, room_id)
+    entries = await _compute(db, room_id, started)
     try:
         await redis_client.setex(key, LEADERBOARD_CACHE_TTL, json.dumps(entries))
     except Exception:
@@ -71,12 +75,19 @@ async def _get_leaderboard(db: AsyncSession, room_id) -> list[dict]:
     return entries
 
 
+def _started(ctx: RoomContext) -> bool:
+    return bool(
+        ctx.room.first_match_at
+        and datetime.now(timezone.utc) >= ctx.room.first_match_at
+    )
+
+
 @router.get("", response_model=list[LeaderboardEntry])
 async def leaderboard(
     ctx: RoomContext = Depends(require_room_member),
     db: AsyncSession = Depends(get_db),
 ):
-    return await _get_leaderboard(db, ctx.room.id)
+    return await _get_leaderboard(db, ctx.room.id, _started(ctx))
 
 
 @router.get("/me", response_model=MyLeaderboardEntry | None)
@@ -84,7 +95,7 @@ async def leaderboard_me(
     ctx: RoomContext = Depends(require_room_member),
     db: AsyncSession = Depends(get_db),
 ):
-    entries = await _get_leaderboard(db, ctx.room.id)
+    entries = await _get_leaderboard(db, ctx.room.id, _started(ctx))
     for e in entries:
         if e["user_id"] == str(ctx.user.id):
             return e

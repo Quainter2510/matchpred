@@ -85,6 +85,8 @@ export interface LeaderboardEntry {
   champion_correct: boolean;
   scorer_correct: boolean;
   participation_confirmed: boolean;
+  champion_team: string | null;
+  top_scorer_name: string | null;
 }
 
 export interface SpecialPrediction {

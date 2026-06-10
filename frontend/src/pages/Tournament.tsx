@@ -1,9 +1,10 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api, MatchDay } from "../api/endpoints";
 import LeaderboardTable from "../components/LeaderboardTable";
 import SpecialPredictionCard from "./SpecialPredictionCard";
+import { useAuth } from "../store/auth";
 import { formatDate, isPast } from "../utils/dates";
 
 const DAY_MS = 86400000;
@@ -60,9 +61,13 @@ export default function Tournament() {
     enabled: !!roomId,
   });
 
+  const me = useAuth((st) => st.user);
   const isRoomAdmin = room.data?.my_role === "admin";
+  const isAdmin = me?.system_role === "superadmin" || isRoomAdmin;
   const archived = room.data && !room.data.is_active;
   const s = room.data?.scoring;
+  const started = !!room.data?.first_match_at && isPast(room.data.first_match_at);
+  const [tab, setTab] = useState<"table" | "predictions">("table");
 
   return (
     <div className="space-y-6">
@@ -97,48 +102,78 @@ export default function Tournament() {
         </div>
       )}
 
-      <section className="card">
-        <h2 className="mb-3 text-lg font-semibold">Таблица лидеров</h2>
-        {lb.isLoading ? (
-          <p className="text-slate-500">Загрузка…</p>
-        ) : (
-          <LeaderboardTable entries={lb.data || []} roomId={roomId!} />
-        )}
-      </section>
+      <div className="flex gap-2 border-b">
+        {([
+          ["table", "Таблица"],
+          ["predictions", "Прогнозы"],
+        ] as const).map(([id, label]) => (
+          <button
+            key={id}
+            onClick={() => setTab(id)}
+            className={`px-3 py-2 ${
+              tab === id
+                ? "border-b-2 border-brand font-semibold text-brand"
+                : "text-slate-500"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
-      <SpecialPredictionCard roomId={roomId!} />
+      {tab === "table" && (
+        <section className="card">
+          {lb.isLoading ? (
+            <p className="text-slate-500">Загрузка…</p>
+          ) : (
+            <LeaderboardTable
+              entries={lb.data || []}
+              roomId={roomId!}
+              started={started}
+              isAdmin={isAdmin}
+            />
+          )}
+        </section>
+      )}
 
-      <section className="card">
-        <h2 className="mb-3 text-lg font-semibold">Туры</h2>
-        {days.isLoading ? (
-          <p className="text-slate-500">Загрузка…</p>
-        ) : !days.data?.length ? (
-          <p className="text-slate-500">Матчи ещё не добавлены.</p>
-        ) : (
-          <div className="grid gap-2 sm:grid-cols-2">
-            {days.data.map((d) => {
-              const st = dayStatus(d);
-              return (
-                <Link
-                  key={d.date}
-                  to={`/room/${roomId}/tour/${d.date}`}
-                  className={`flex items-center justify-between rounded-lg border p-3 transition ${st.cls}`}
-                >
-                  <span className="flex flex-col">
-                    <span className="font-medium">{formatDate(d.date)}</span>
-                    {st.label && (
-                      <span className={`text-xs ${st.labelCls}`}>{st.label}</span>
-                    )}
-                  </span>
-                  <span className="text-sm text-slate-500">
-                    {d.my_predictions_count}/{d.match_count} прогнозов
-                  </span>
-                </Link>
-              );
-            })}
-          </div>
-        )}
-      </section>
+      {tab === "predictions" && (
+        <div className="space-y-6">
+          {/* Спецпрогноз доступен только до старта турнира. */}
+          {!started && <SpecialPredictionCard roomId={roomId!} />}
+
+          <section className="card">
+            <h2 className="mb-3 text-lg font-semibold">Туры</h2>
+            {days.isLoading ? (
+              <p className="text-slate-500">Загрузка…</p>
+            ) : !days.data?.length ? (
+              <p className="text-slate-500">Матчи ещё не добавлены.</p>
+            ) : (
+              <div className="grid gap-2 sm:grid-cols-2">
+                {days.data.map((d) => {
+                  const st = dayStatus(d);
+                  return (
+                    <Link
+                      key={d.date}
+                      to={`/room/${roomId}/tour/${d.date}`}
+                      className={`flex items-center justify-between rounded-lg border p-3 transition ${st.cls}`}
+                    >
+                      <span className="flex flex-col">
+                        <span className="font-medium">{formatDate(d.date)}</span>
+                        {st.label && (
+                          <span className={`text-xs ${st.labelCls}`}>{st.label}</span>
+                        )}
+                      </span>
+                      <span className="text-sm text-slate-500">
+                        {d.my_predictions_count}/{d.match_count} прогнозов
+                      </span>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        </div>
+      )}
     </div>
   );
 }

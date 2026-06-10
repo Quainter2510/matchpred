@@ -15,6 +15,9 @@ class LeaderboardEntry(BaseModel):
     champion_correct: bool = False
     scorer_correct: bool = False
     participation_confirmed: bool = False
+    # Revealed only after the tournament starts.
+    champion_team: str | None = None
+    top_scorer_name: str | None = None
 
 
 class MyLeaderboardEntry(LeaderboardEntry):
