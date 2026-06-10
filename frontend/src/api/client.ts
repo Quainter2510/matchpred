@@ -68,6 +68,8 @@ client.interceptors.response.use(
       // Refresh failed. Bounce to login only from a protected page — never from
       // a public auth page, otherwise the anonymous initial load loops.
       const publicPaths = [
+        "/",
+        "/rooms",
         "/login",
         "/auth/callback",
         "/telegram-auth",

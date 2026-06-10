@@ -15,8 +15,9 @@ export default function Sidebar() {
   const navigate = useNavigate();
   const [menu, setMenu] = useState(false);
 
-  const items = [...nav];
-  if (isAdmin()) items.push({ to: "/admin", label: "Админ", icon: "⚙️" });
+  // Аноним в лобби видит только «Соревнования» и кнопку «Войти».
+  const items = user ? [...nav] : [nav[0]];
+  if (user && isAdmin()) items.push({ to: "/admin", label: "Админ", icon: "⚙️" });
 
   const handleLogout = async () => {
     await logout();
@@ -48,6 +49,11 @@ export default function Sidebar() {
             </Link>
           ))}
         </nav>
+        {!user ? (
+          <Link to="/login" className="btn-primary block w-full text-center">
+            Войти
+          </Link>
+        ) : (
         <div className="relative">
           <button
             onClick={() => setMenu((m) => !m)}
@@ -80,6 +86,7 @@ export default function Sidebar() {
             </div>
           )}
         </div>
+        )}
       </aside>
 
       {/* Mobile bottom bar */}
@@ -96,13 +103,23 @@ export default function Sidebar() {
             {i.label}
           </Link>
         ))}
-        <button
-          onClick={handleLogout}
-          className="flex flex-col items-center text-xs text-slate-500"
-        >
-          <span className="text-lg">🚪</span>
-          Выход
-        </button>
+        {user ? (
+          <button
+            onClick={handleLogout}
+            className="flex flex-col items-center text-xs text-slate-500"
+          >
+            <span className="text-lg">🚪</span>
+            Выход
+          </button>
+        ) : (
+          <Link
+            to="/login"
+            className="flex flex-col items-center text-xs text-brand"
+          >
+            <span className="text-lg">🔑</span>
+            Войти
+          </Link>
+        )}
       </nav>
     </>
   );

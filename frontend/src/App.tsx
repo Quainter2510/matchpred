@@ -44,14 +44,19 @@ const page = (el: JSX.Element) => (
   </Protected>
 );
 
-// Entry point after login: jump straight to the last opened competition (or the
-// only one), falling back to the hub when there is a choice to make.
+// Entry point: anonymous visitors land on the public lobby; logged-in users
+// jump straight to the last opened competition (or the only one), falling
+// back to the hub when there is a choice to make.
 function RootRedirect() {
+  const { user, loading } = useAuth();
   const { data, isLoading } = useQuery({
     queryKey: ["my-rooms"],
     queryFn: api.myRooms,
+    enabled: !!user,
   });
-  if (isLoading) return <div className="p-8 text-slate-500">Загрузка…</div>;
+  if (loading || (user && isLoading))
+    return <div className="p-8 text-slate-500">Загрузка…</div>;
+  if (!user) return <Navigate to="/rooms" replace />;
   const rooms = (data || []).filter((rm) => rm.is_active);
   const last = localStorage.getItem("last_room_id");
   const target = rooms.find((rm) => rm.id === last) ?? (rooms.length === 1 ? rooms[0] : null);
@@ -71,15 +76,17 @@ export default function App() {
       <Route path="/telegram-auth" element={<TelegramAuthCallback />} />
       <Route path="/setup-profile" element={<SetupProfile />} />
 
+      <Route path="/" element={<RootRedirect />} />
+      {/* Лобби публичное: анонимный пользователь видит список соревнований,
+          окно авторизации появляется при попытке действия. */}
       <Route
-        path="/"
+        path="/rooms"
         element={
-          <Protected>
-            <RootRedirect />
-          </Protected>
+          <Shell>
+            <RoomsHub />
+          </Shell>
         }
       />
-      <Route path="/rooms" element={page(<RoomsHub />)} />
       <Route path="/profile" element={page(<Profile />)} />
       <Route path="/admin/*" element={page(<Admin />)} />
 

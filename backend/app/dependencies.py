@@ -31,6 +31,19 @@ async def get_current_user(
     return user
 
 
+async def get_current_user_optional(
+    request: Request, db: AsyncSession = Depends(get_db)
+) -> User | None:
+    """Как get_current_user, но без 401 — для публичных страниц (лобби),
+    которые показывают больше деталей вошедшим пользователям."""
+    if not request.headers.get("Authorization", "").startswith("Bearer "):
+        return None
+    try:
+        return await get_current_user(request, db)
+    except HTTPException:
+        return None
+
+
 async def require_superadmin(user: User = Depends(get_current_user)) -> User:
     if user.system_role != "superadmin":
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Superadmin access required")

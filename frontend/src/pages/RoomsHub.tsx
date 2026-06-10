@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { api, Room } from "../api/endpoints";
 import { useAuth } from "../store/auth";
+import AuthModal from "../components/AuthModal";
 
 function RoomRow({ room, onOpen }: { room: Room; onOpen: () => void }) {
   return (
@@ -22,7 +23,15 @@ function RoomRow({ room, onOpen }: { room: Room; onOpen: () => void }) {
   );
 }
 
-function JoinCard({ room, onJoined }: { room: Room; onJoined: () => void }) {
+function JoinCard({
+  room,
+  onJoined,
+  onRequireAuth,
+}: {
+  room: Room;
+  onJoined: () => void;
+  onRequireAuth: () => boolean; // true = пользователь не авторизован, действие прервано
+}) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const superadmin = useAuth((s) => s.isSuperadmin());
@@ -46,12 +55,16 @@ function JoinCard({ room, onJoined }: { room: Room; onJoined: () => void }) {
             placeholder="Пароль соревнования"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            onFocus={onRequireAuth}
           />
         )}
         <button
           className="btn-primary whitespace-nowrap"
           disabled={join.isPending}
-          onClick={() => join.mutate()}
+          onClick={() => {
+            if (onRequireAuth()) return;
+            join.mutate();
+          }}
         >
           Войти
         </button>
@@ -64,10 +77,22 @@ function JoinCard({ room, onJoined }: { room: Room; onJoined: () => void }) {
 export default function RoomsHub() {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const user = useAuth((s) => s.user);
   const superadmin = useAuth((s) => s.isSuperadmin());
   const loadMe = useAuth((s) => s.loadMe);
+  const [authPrompt, setAuthPrompt] = useState(false);
+  // Анониму действия недоступны — вместо них показываем окно авторизации.
+  const requireAuth = () => {
+    if (user) return false;
+    setAuthPrompt(true);
+    return true;
+  };
 
-  const mine = useQuery({ queryKey: ["my-rooms"], queryFn: api.myRooms });
+  const mine = useQuery({
+    queryKey: ["my-rooms"],
+    queryFn: api.myRooms,
+    enabled: !!user,
+  });
   const [q, setQ] = useState("");
   const search = useQuery({
     queryKey: ["rooms-search", q],
@@ -103,26 +128,39 @@ export default function RoomsHub() {
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Соревнования</h1>
 
-      <section className="card">
-        <h2 className="mb-3 text-lg font-semibold">Мои соревнования</h2>
-        {mine.isLoading ? (
-          <p className="text-slate-500">Загрузка…</p>
-        ) : !activeRooms.length ? (
-          <p className="text-slate-500">
-            Вы пока не участвуете ни в одном активном соревновании. Найдите соревнование ниже и войдите по паролю.
+      {authPrompt && <AuthModal onClose={() => setAuthPrompt(false)} />}
+
+      {!user ? (
+        <section className="card">
+          <h2 className="mb-2 text-lg font-semibold">Добро пожаловать! 👋</h2>
+          <p className="text-sm text-slate-600">
+            Здесь соревнуются в прогнозах на матчи ЧМ-2026: угадывайте счёт,
+            набирайте очки и поднимайтесь в таблице. Выберите соревнование ниже —
+            для участия понадобится войти и ввести пароль соревнования.
           </p>
-        ) : (
-          <div className="grid gap-2">
-            {activeRooms.map((room) => (
-              <RoomRow
-                key={room.id}
-                room={room}
-                onOpen={() => navigate(`/room/${room.id}`)}
-              />
-            ))}
-          </div>
-        )}
-      </section>
+        </section>
+      ) : (
+        <section className="card">
+          <h2 className="mb-3 text-lg font-semibold">Мои соревнования</h2>
+          {mine.isLoading ? (
+            <p className="text-slate-500">Загрузка…</p>
+          ) : !activeRooms.length ? (
+            <p className="text-slate-500">
+              Вы пока не участвуете ни в одном активном соревновании. Найдите соревнование ниже и войдите по паролю.
+            </p>
+          ) : (
+            <div className="grid gap-2">
+              {activeRooms.map((room) => (
+                <RoomRow
+                  key={room.id}
+                  room={room}
+                  onOpen={() => navigate(`/room/${room.id}`)}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       {archivedRooms.length > 0 && (
         <section className="card">
@@ -187,7 +225,12 @@ export default function RoomsHub() {
         ) : (
           <div className="grid gap-2">
             {joinable.map((room) => (
-              <JoinCard key={room.id} room={room} onJoined={refetchAll} />
+              <JoinCard
+                key={room.id}
+                room={room}
+                onJoined={refetchAll}
+                onRequireAuth={requireAuth}
+              />
             ))}
           </div>
         )}

@@ -8,6 +8,7 @@ from app.database import get_db
 from app.dependencies import (
     RoomContext,
     get_current_user,
+    get_current_user_optional,
     require_room_admin,
     require_room_member,
     require_superadmin,
@@ -130,20 +131,23 @@ async def delete_room(
 @router.get("", response_model=list[RoomSummary])
 async def list_rooms(
     q: str | None = Query(None),
-    user: User = Depends(get_current_user),
+    user: User | None = Depends(get_current_user_optional),
     db: AsyncSession = Depends(get_db),
 ):
-    """All active rooms, optionally filtered by name. Used to find and join."""
+    """All active rooms, optionally filtered by name. Public: the lobby is
+    visible without login; joining requires auth."""
     stmt = select(Room).where(Room.is_active.is_(True)).order_by(Room.name)
     if q:
         stmt = stmt.where(Room.name.ilike(f"%{q.strip()}%"))
     rooms = (await db.execute(stmt)).scalars().all()
-    my = {
-        m.room_id: m.room_role
-        for m in (
-            await db.execute(select(RoomMember).where(RoomMember.user_id == user.id))
-        ).scalars().all()
-    }
+    my: dict = {}
+    if user:
+        my = {
+            m.room_id: m.room_role
+            for m in (
+                await db.execute(select(RoomMember).where(RoomMember.user_id == user.id))
+            ).scalars().all()
+        }
     out = []
     for r in rooms:
         out.append(
