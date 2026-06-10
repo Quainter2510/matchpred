@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 import httpx
 
 from app.config import settings
+from app.services import players_catalog
 
 # Настоящая группа в /standings называется "Group A".."Group L". Кроме них там
 # бывают служебные таблицы вроде "Ranking of third-placed teams" — их игнорируем.
@@ -142,10 +143,21 @@ async def search_players(query: str) -> list[dict]:
 
     Результат сортируется по позиции (нападающие выше) и обрезается до
     _SEARCH_LIMIT, иначе кандидатов слишком много.
+
+    Сначала отдаём кураторский список фаворитов (с поиском по-русски), затем —
+    живые результаты из API. До турнира у лиги ЧМ нет составов, поэтому API
+    может вернуть пусто; кураторский список работает всегда.
     """
-    data = await _get("/players/profiles", {"search": query})
+    curated = players_catalog.search_curated(query)
+    seen: set[int] = {p["api_id"] for p in curated}
+
+    try:
+        data = await _get("/players/profiles", {"search": query})
+    except Exception:
+        # Live search is best-effort; curated favourites still come back.
+        return curated[:_SEARCH_LIMIT]
+
     ranked: list[tuple] = []
-    seen: set[int] = set()
     for item in data.get("response", []):
         player = item.get("player", {})
         pid = player.get("id")
@@ -169,4 +181,6 @@ async def search_players(query: str) -> list[dict]:
             )
         )
     ranked.sort(key=lambda t: (t[0], t[1]))
-    return [d for _, _, d in ranked[:_SEARCH_LIMIT]]
+    live = [d for _, _, d in ranked]
+    # Curated favourites first, then live API results, capped at the limit.
+    return (curated + live)[:_SEARCH_LIMIT]
