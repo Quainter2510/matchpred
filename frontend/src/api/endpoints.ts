@@ -132,6 +132,10 @@ export const api = {
       .then((x) => x.data),
   logout: () => client.post("/auth/logout"),
   yandexLoginUrl: () => `${API_BASE}/auth/yandex/login`,
+  vkLinkCode: () =>
+    client
+      .post<{ code: string; bot_url: string | null }>("/auth/vk/link-code")
+      .then((x) => x.data),
 
   // ---- rooms ----
   listRooms: (q?: string) =>

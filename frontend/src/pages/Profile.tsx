@@ -6,6 +6,8 @@ export default function Profile() {
   const { user, setUser } = useAuth();
   const [nickname, setNickname] = useState(user?.nickname || "");
   const [msg, setMsg] = useState("");
+  const [vk, setVk] = useState<{ code: string; bot_url: string | null } | null>(null);
+  const [vkLoading, setVkLoading] = useState(false);
 
   const save = async () => {
     setMsg("");
@@ -15,6 +17,17 @@ export default function Profile() {
       setMsg("Сохранено");
     } catch (err: any) {
       setMsg(err.response?.data?.detail || "Ошибка");
+    }
+  };
+
+  const linkVk = async () => {
+    setVkLoading(true);
+    try {
+      setVk(await api.vkLinkCode());
+    } catch (err: any) {
+      alert(err.response?.data?.detail || "Не удалось получить код");
+    } finally {
+      setVkLoading(false);
     }
   };
 
@@ -55,6 +68,40 @@ export default function Profile() {
         <button className="btn-primary" onClick={save}>
           Сохранить
         </button>
+      </div>
+
+      <div className="card space-y-3">
+        <h2 className="text-lg font-semibold">Привязка ВКонтакте</h2>
+        <p className="text-sm text-slate-500">
+          Привяжите ВК, чтобы делать прогнозы через бота сообщества.
+        </p>
+        {!vk ? (
+          <button className="btn-primary" onClick={linkVk} disabled={vkLoading}>
+            {vkLoading ? "Готовим код…" : "Привязать ВК"}
+          </button>
+        ) : (
+          <div className="space-y-2">
+            <p className="text-sm">
+              Откройте бота и пришлите ему этот код (действует 10 минут):
+            </p>
+            <div className="rounded-lg bg-slate-100 px-3 py-2 text-center text-2xl font-bold tracking-widest">
+              {vk.code}
+            </div>
+            {vk.bot_url && (
+              <a
+                href={vk.bot_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn w-full bg-[#2787F5] text-white hover:bg-[#1b6fd6]"
+              >
+                Открыть бота ВК
+              </a>
+            )}
+            <button className="btn-ghost w-full" onClick={linkVk} disabled={vkLoading}>
+              Получить новый код
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
