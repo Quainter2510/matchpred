@@ -132,6 +132,10 @@ export interface PlayerProfile {
   total_points: number;
   exact_scores_count: number;
   is_self: boolean;
+  specials_revealed: boolean;
+  first_match_at: string;
+  champion_team: string | null;
+  top_scorer_name: string | null;
   matches: PlayerProfileMatch[];
 }
 

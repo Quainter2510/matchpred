@@ -31,4 +31,9 @@ class PlayerProfile(BaseModel):
     total_points: int
     exact_scores_count: int
     is_self: bool
+    # Special predictions are revealed only after the tournament starts.
+    specials_revealed: bool = False
+    first_match_at: datetime
+    champion_team: str | None = None
+    top_scorer_name: str | None = None
     matches: list[PlayerProfileMatch]

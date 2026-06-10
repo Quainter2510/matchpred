@@ -50,8 +50,13 @@ export default function PlayerProfile() {
   const firstUpcoming = data?.matches.find((m) => !m.started);
 
   // Shrink the header once the user scrolls past the big profile block.
+  // Hysteresis (collapse at 180, expand only back under 60) prevents the header
+  // from flickering when its own height change nudges the scroll position.
   useEffect(() => {
-    const onScroll = () => setCompact(window.scrollY > 140);
+    const onScroll = () => {
+      const y = window.scrollY;
+      setCompact((prev) => (prev ? y > 40 : y > 180));
+    };
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
@@ -98,68 +103,113 @@ export default function PlayerProfile() {
             </div>
           </div>
         ) : (
-          <div className="flex items-center gap-4 pb-4 pt-2">
-            <Avatar url={data.avatar_url} nick={data.nickname} size="h-20 w-20" />
-            <div>
-              <div className="text-2xl font-bold">{data.nickname}</div>
-              <div className="mt-2 flex gap-4 text-sm">
-                <div>
-                  <div className="text-slate-400">Место</div>
-                  <div className="text-lg font-semibold">{placeStr}</div>
-                </div>
-                <div>
-                  <div className="text-slate-400">Очки</div>
-                  <div className="text-lg font-semibold">{data.total_points}</div>
-                </div>
-                <div>
-                  <div className="text-slate-400">Точные счёта</div>
-                  <div className="text-lg font-semibold text-emerald-600">
-                    {data.exact_scores_count}
+          <div className="space-y-3 pb-4 pt-2">
+            <div className="flex items-center gap-4">
+              <Avatar url={data.avatar_url} nick={data.nickname} size="h-20 w-20" />
+              <div>
+                <div className="text-2xl font-bold">{data.nickname}</div>
+                <div className="mt-2 flex gap-4 text-sm">
+                  <div>
+                    <div className="text-slate-400">Место</div>
+                    <div className="text-lg font-semibold">{placeStr}</div>
+                  </div>
+                  <div>
+                    <div className="text-slate-400">Очки</div>
+                    <div className="text-lg font-semibold">{data.total_points}</div>
+                  </div>
+                  <div>
+                    <div className="text-slate-400">Точные счёта</div>
+                    <div className="text-lg font-semibold text-emerald-600">
+                      {data.exact_scores_count}
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
+
+            {/* Special predictions: revealed only after the tournament starts. */}
+            {data.specials_revealed ? (
+              <div className="flex flex-wrap gap-x-6 gap-y-1 rounded-lg bg-slate-50 px-3 py-2 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-400">Чемпион:</span>
+                  {data.champion_team ? (
+                    <TeamName team={data.champion_team} className="font-medium" />
+                  ) : (
+                    <span className="text-slate-400">не указан</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-400">Бомбардир:</span>
+                  <span className="font-medium">
+                    {data.top_scorer_name || (
+                      <span className="font-normal text-slate-400">не указан</span>
+                    )}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                🔒 Чемпион и бомбардир появятся после начала турнира.
+              </div>
+            )}
           </div>
         )}
       </div>
 
-      {/* Matches */}
+      {/* Matches, grouped by day */}
       <div className="mt-4 space-y-2">
-        {data.matches.map((m) => (
-          <div
-            key={m.match_id}
-            id={`m-${m.match_id}`}
-            className={`scroll-mt-28 rounded-lg border p-3 ${rowClass(m, scoring)}`}
-          >
-            <div className="flex items-center justify-between text-xs text-slate-500">
-              <span>
-                {formatDate(m.match_date)} {formatTime(m.kickoff_at)} ·{" "}
-                {formatStage(m.stage, m.group_name)}
-              </span>
-              <span>
-                {m.points_awarded != null ? (
-                  <span className={m.is_exact ? "font-bold text-emerald-700" : "font-medium"}>
-                    +{m.points_awarded}
+        {(() => {
+          let lastDate = "";
+          const out: JSX.Element[] = [];
+          for (const m of data.matches) {
+            if (m.match_date !== lastDate) {
+              lastDate = m.match_date;
+              out.push(
+                <h2
+                  key={`day-${m.match_date}`}
+                  className="px-1 pt-3 text-sm font-semibold uppercase tracking-wide text-slate-400"
+                >
+                  {formatDate(m.match_date)}
+                </h2>
+              );
+            }
+            out.push(
+              <div
+                key={m.match_id}
+                id={`m-${m.match_id}`}
+                className={`scroll-mt-28 rounded-lg border p-3 ${rowClass(m, scoring)}`}
+              >
+                <div className="flex items-center justify-between text-xs text-slate-500">
+                  <span>
+                    {formatTime(m.kickoff_at)} · {formatStage(m.stage, m.group_name)}
                   </span>
-                ) : (
-                  "—"
-                )}
-              </span>
-            </div>
-            <div className="mt-1 grid grid-cols-3 items-center gap-2">
-              <TeamName team={m.home_team} flagSide="right" className="justify-end text-right font-medium" />
-              <div className="text-center">
-                <div className="text-lg font-bold">
-                  {m.status === "finished" ? score(m.home_score_ft, m.away_score_ft) : "—:—"}
+                  <span>
+                    {m.points_awarded != null ? (
+                      <span className={m.is_exact ? "font-bold text-emerald-700" : "font-medium"}>
+                        +{m.points_awarded}
+                      </span>
+                    ) : (
+                      "—"
+                    )}
+                  </span>
                 </div>
-                <div className="text-xs text-slate-500">
-                  прогноз: {score(m.predicted_home, m.predicted_away)}
+                <div className="mt-1 grid grid-cols-3 items-center gap-2">
+                  <TeamName team={m.home_team} flagSide="right" className="justify-end text-right font-medium" />
+                  <div className="text-center">
+                    <div className="text-lg font-bold">
+                      {m.status === "finished" ? score(m.home_score_ft, m.away_score_ft) : "—:—"}
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      прогноз: {score(m.predicted_home, m.predicted_away)}
+                    </div>
+                  </div>
+                  <TeamName team={m.away_team} className="justify-start text-left font-medium" />
                 </div>
               </div>
-              <TeamName team={m.away_team} className="justify-start text-left font-medium" />
-            </div>
-          </div>
-        ))}
+            );
+          }
+          return out;
+        })()}
       </div>
 
       {/* Jump to the first upcoming match */}

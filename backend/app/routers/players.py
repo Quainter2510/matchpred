@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import RoomContext, require_room_member
-from app.models import Match, Prediction, RoomMember, User
+from app.models import Match, Prediction, RoomMember, SpecialPrediction, User
 from app.schemas.player import PlayerProfile, PlayerProfileMatch
 
 router = APIRouter(prefix="/rooms/{room_id}/players", tags=["players"])
@@ -45,6 +45,18 @@ async def player_profile(
     is_self = uid == ctx.user.id
     reveal = is_self or ctx.is_admin
     now = datetime.now(timezone.utc)
+
+    # Special predictions (champion / top scorer): shown only after the
+    # tournament starts; admins always.
+    specials_revealed = ctx.is_admin or now >= ctx.room.first_match_at
+    sp = await db.scalar(
+        select(SpecialPrediction).where(
+            SpecialPrediction.room_id == room_id,
+            SpecialPrediction.user_id == uid,
+        )
+    )
+    champion_team = sp.champion_team if (sp and specials_revealed) else None
+    top_scorer_name = sp.top_scorer_name if (sp and specials_revealed) else None
 
     rows = (
         await db.execute(
@@ -93,5 +105,9 @@ async def player_profile(
         total_points=member.total_points,
         exact_scores_count=member.exact_scores_count,
         is_self=is_self,
+        specials_revealed=specials_revealed,
+        first_match_at=ctx.room.first_match_at,
+        champion_team=champion_team,
+        top_scorer_name=top_scorer_name,
         matches=matches,
     )
