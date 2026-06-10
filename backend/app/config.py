@@ -27,6 +27,13 @@ class Settings(BaseSettings):
     YANDEX_CLIENT_SECRET: str = ""
     YANDEX_REDIRECT_URI: str = ""
 
+    # VK community bot (Callback API)
+    VK_GROUP_TOKEN: str = ""
+    VK_GROUP_ID: int = 0
+    VK_CONFIRMATION: str = ""
+    VK_SECRET: str = ""
+    VK_API_VERSION: str = "5.199"
+
     # API Football
     API_FOOTBALL_KEY: str = ""
     API_FOOTBALL_LEAGUE_ID: int = 1  # FIFA World Cup

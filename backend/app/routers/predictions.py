@@ -1,5 +1,4 @@
-import uuid
-from datetime import date as date_type, datetime, timezone
+from datetime import date as date_type
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
@@ -15,7 +14,7 @@ from app.schemas.prediction import (
     PredictionResult,
     TourPointsOut,
 )
-from app.services import audit
+from app.services.predictions import set_prediction
 
 router = APIRouter(prefix="/rooms/{room_id}/predictions", tags=["predictions"])
 
@@ -28,26 +27,11 @@ async def batch(
 ):
     if not ctx.room.is_active:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Room is archived")
-    room_id = ctx.room.id
-    user = ctx.user
-    now = datetime.now(timezone.utc)
     match_ids = [p.match_id for p in payload.predictions]
     matches = {
         m.id: m
         for m in (
             await db.execute(select(Match).where(Match.id.in_(match_ids)))
-        ).scalars().all()
-    }
-    existing = {
-        p.match_id: p
-        for p in (
-            await db.execute(
-                select(Prediction).where(
-                    Prediction.room_id == room_id,
-                    Prediction.user_id == user.id,
-                    Prediction.match_id.in_(match_ids),
-                )
-            )
         ).scalars().all()
     }
 
@@ -57,51 +41,10 @@ async def batch(
         if not match:
             results.append(PredictionResult(match_id=item.match_id, accepted=False, reason="match_not_found"))
             continue
-        # Deadline is enforced ONLY on the backend.
-        if now >= match.kickoff_at:
-            results.append(PredictionResult(match_id=item.match_id, accepted=False, reason="deadline_passed"))
-            continue
-
-        pred = existing.get(item.match_id)
-        match_label = f"{match.home_team} — {match.away_team}"
-        if pred:
-            changed = pred.predicted_home != item.home or pred.predicted_away != item.away
-            if changed:
-                await audit.log_event(
-                    db,
-                    "prediction_updated",
-                    actor_id=user.id,
-                    actor_nickname=user.nickname,
-                    target_id=match.id,
-                    details={
-                        "room_id": str(room_id),
-                        "match": match_label,
-                        "home": item.home,
-                        "away": item.away,
-                        "previous": {"home": pred.predicted_home, "away": pred.predicted_away},
-                    },
-                )
-            pred.predicted_home = item.home
-            pred.predicted_away = item.away
-        else:
-            db.add(
-                Prediction(
-                    room_id=room_id,
-                    user_id=user.id,
-                    match_id=item.match_id,
-                    predicted_home=item.home,
-                    predicted_away=item.away,
-                )
-            )
-            await audit.log_event(
-                db,
-                "prediction_set",
-                actor_id=user.id,
-                actor_nickname=user.nickname,
-                target_id=match.id,
-                details={"room_id": str(room_id), "match": match_label, "home": item.home, "away": item.away},
-            )
-        results.append(PredictionResult(match_id=item.match_id, accepted=True))
+        accepted, reason = await set_prediction(
+            db, room=ctx.room, user=ctx.user, match=match, home=item.home, away=item.away
+        )
+        results.append(PredictionResult(match_id=item.match_id, accepted=accepted, reason=reason))
 
     await db.commit()
     return PredictionBatchResponse(results=results)

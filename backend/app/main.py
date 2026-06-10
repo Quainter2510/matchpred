@@ -12,6 +12,7 @@ from app.config import settings
 from app.routers import (
     admin,
     auth,
+    bots,
     leaderboard,
     matches,
     predictions,
@@ -60,6 +61,7 @@ app.include_router(special.router, prefix=API_V1)
 app.include_router(special.players_router, prefix=API_V1)
 app.include_router(leaderboard.router, prefix=API_V1)
 app.include_router(admin.router, prefix=API_V1)
+app.include_router(bots.router, prefix=API_V1)
 
 
 @app.get("/health")

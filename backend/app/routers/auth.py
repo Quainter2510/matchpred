@@ -336,3 +336,16 @@ async def update_me(
     )
     await db.commit()
     return _me(user, await _has_rooms(db, user.id), await is_any_admin(db, user))
+
+
+@router.post("/vk/link-code")
+async def vk_link_code(user: User = Depends(get_current_user)):
+    """Issue a one-time code the user sends to the VK bot to link the account.
+    The profile UI button calls this; the code is valid for 10 minutes."""
+    from app.services.bot.state import create_link_code
+
+    code = await create_link_code(user.id)
+    bot_url = (
+        f"https://vk.me/club{settings.VK_GROUP_ID}" if settings.VK_GROUP_ID else None
+    )
+    return {"code": code, "bot_url": bot_url}
