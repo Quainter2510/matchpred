@@ -21,6 +21,15 @@ from app.services.bot.state import (
     get_state,
     set_state,
 )
+from app.services.bot.teams import team_ru
+
+# Figure space (U+2007) has the width of a digit, so padding numbers with it
+# makes them line up in a column even in VK's proportional chat font.
+_FIG = "\u2007"
+
+
+def _rjust(s: str, width: int) -> str:
+    return _FIG * max(0, width - len(s)) + s
 
 # Day windows (inclusive), relative to today (UTC).
 RESULTS_BACK, RESULTS_FWD = 3, 2
@@ -189,10 +198,13 @@ async def _table(db: AsyncSession, provider: str, ext_id: str, user: User) -> Re
     rows = await queries.leaderboard(db, room.id)
     if not rows:
         return Reply("В комнате пока нет участников.", [_btn_menu()])
-    lines = [f"🏆 Таблица — {room.name}"]
-    for i, (nick, pts) in enumerate(rows[:50], start=1):
+    rows = rows[:50]
+    pts_w = max(len(str(p)) for _, p in rows)
+    lines = [f"🏆 Таблица — {room.name}", ""]
+    for i, (nick, pts) in enumerate(rows, start=1):
         prefix = _MEDALS.get(i, f"{i}.")
-        lines.append(f"{prefix} {nick} — {pts}")
+        # Points first (figure-space padded) so the numbers form a column.
+        lines.append(f"{_rjust(str(pts), pts_w)} {prefix} {nick}")
     return Reply("\n".join(lines), [_btn_menu()])
 
 
@@ -226,7 +238,12 @@ async def _tour_results(
     matches = await queries.tour_matches_for_user(db, room.id, user.id, day)
 
     lines = [f"📅 {_fmt_day(day)} — итоги ({room.name})", ""]
-    lines.append(" · ".join(f"{n} — {p}" for n, p in players[:30]) or "—")
+    if players:
+        pts_w = max(len(str(p)) for _, p in players)
+        for nick, pts in players[:50]:
+            lines.append(f"{_rjust(str(pts), pts_w)} {nick}")
+    else:
+        lines.append("—")
     lines.append("")
     lines.append("Матчи (ваши очки):")
     for m, pred in matches:
@@ -236,7 +253,7 @@ async def _tour_results(
             score = "—:—"
         pts = "" if pred is None or pred.points_awarded is None else f" — +{pred.points_awarded}"
         guess = "" if pred is None else f" (ваш {pred.predicted_home}:{pred.predicted_away})"
-        lines.append(f"{m.home_team} {score} {m.away_team}{guess}{pts}")
+        lines.append(f"{team_ru(m.home_team)} {score} {team_ru(m.away_team)}{guess}{pts}")
 
     buttons = [[Button("⬅️ К турам", {"a": "tour"})], _btn_menu()]
     return Reply("\n".join(lines), buttons)
@@ -284,8 +301,7 @@ async def _predict_start(
 def _predict_prompt(match: Match, idx: int, total: int) -> Reply:
     return Reply(
         f"Матч {idx + 1}/{total}:\n"
-        f"⚽ {match.home_team} — {match.away_team}\n"
-        f"Введите счёт через пробел, например «2 1».",
+        f"⚽ {team_ru(match.home_team)} — {team_ru(match.away_team)}",
         [[Button("⏭️ Пропустить", {"a": "skip"})], [Button("⏹️ Стоп", {"a": "menu"})]],
     )
 
