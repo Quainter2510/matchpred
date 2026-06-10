@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { LeaderboardEntry } from "../api/endpoints";
 import { useAuth } from "../store/auth";
 
@@ -20,8 +21,10 @@ function StatusMark({ set, correct }: { set: boolean; correct: boolean }) {
 
 export default function LeaderboardTable({
   entries,
+  roomId,
 }: {
   entries: LeaderboardEntry[];
+  roomId: string;
 }) {
   const me = useAuth((s) => s.user);
   if (!entries.length)
@@ -56,7 +59,12 @@ export default function LeaderboardTable({
                   {e.nickname[0]?.toUpperCase()}
                 </div>
               )}
-              {e.nickname}
+              <Link
+                to={`/room/${roomId}/player/${e.user_id}`}
+                className="hover:text-brand hover:underline"
+              >
+                {e.nickname}
+              </Link>
             </td>
             <td className="text-center">
               {e.participation_confirmed ? (

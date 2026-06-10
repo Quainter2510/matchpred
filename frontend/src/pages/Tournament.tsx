@@ -97,7 +97,7 @@ export default function Tournament() {
         {lb.isLoading ? (
           <p className="text-slate-500">Загрузка…</p>
         ) : (
-          <LeaderboardTable entries={lb.data || []} />
+          <LeaderboardTable entries={lb.data || []} roomId={roomId!} />
         )}
       </section>
 

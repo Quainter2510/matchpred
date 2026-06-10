@@ -106,6 +106,35 @@ export interface RoomMember {
   participation_confirmed: boolean;
 }
 
+export interface PlayerProfileMatch {
+  match_id: string;
+  match_date: string;
+  kickoff_at: string;
+  stage: string;
+  group_name: string | null;
+  home_team: string;
+  away_team: string;
+  status: string;
+  home_score_ft: number | null;
+  away_score_ft: number | null;
+  started: boolean;
+  predicted_home: number | null;
+  predicted_away: number | null;
+  points_awarded: number | null;
+  is_exact: boolean | null;
+}
+
+export interface PlayerProfile {
+  user_id: string;
+  nickname: string;
+  avatar_url: string | null;
+  place: number | null;
+  total_points: number;
+  exact_scores_count: number;
+  is_self: boolean;
+  matches: PlayerProfileMatch[];
+}
+
 export interface AuditEntry {
   id: number;
   created_at: string;
@@ -219,6 +248,10 @@ export const api = {
     client.get(`${r(roomId)}/special-prediction/all`).then((x) => x.data),
   searchPlayers: (q: string) =>
     client.get("/players/search", { params: { q } }).then((x) => x.data),
+
+  // ---- player profile (room-scoped) ----
+  playerProfile: (roomId: string, userId: string) =>
+    client.get<PlayerProfile>(`${r(roomId)}/players/${userId}`).then((x) => x.data),
 
   // ---- leaderboard (room-scoped) ----
   leaderboard: (roomId: string) =>

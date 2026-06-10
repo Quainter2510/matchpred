@@ -15,6 +15,7 @@ from app.routers import (
     bots,
     leaderboard,
     matches,
+    players,
     predictions,
     rooms,
     special,
@@ -60,6 +61,7 @@ app.include_router(predictions.router, prefix=API_V1)
 app.include_router(special.router, prefix=API_V1)
 app.include_router(special.players_router, prefix=API_V1)
 app.include_router(leaderboard.router, prefix=API_V1)
+app.include_router(players.router, prefix=API_V1)
 app.include_router(admin.router, prefix=API_V1)
 app.include_router(bots.router, prefix=API_V1)
 

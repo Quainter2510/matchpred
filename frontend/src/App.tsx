@@ -11,6 +11,7 @@ import Tournament from "./pages/Tournament";
 import Tour from "./pages/Tour";
 import PredictMatch from "./pages/PredictMatch";
 import MatchPredictions from "./pages/MatchPredictions";
+import PlayerProfile from "./pages/PlayerProfile";
 import Profile from "./pages/Profile";
 import RoomAdmin from "./pages/admin/RoomAdmin";
 import Admin from "./pages/admin/Admin";
@@ -62,6 +63,7 @@ export default function App() {
       <Route path="/room/:roomId/tour/:date" element={page(<Tour />)} />
       <Route path="/room/:roomId/match/:id/predict" element={page(<PredictMatch />)} />
       <Route path="/room/:roomId/match/:id/predictions" element={page(<MatchPredictions />)} />
+      <Route path="/room/:roomId/player/:userId" element={page(<PlayerProfile />)} />
       <Route path="/room/:roomId/admin/*" element={page(<RoomAdmin />)} />
 
       <Route path="*" element={<Navigate to="/" replace />} />

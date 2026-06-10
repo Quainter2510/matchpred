@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/endpoints";
 import TeamName from "../components/TeamName";
 
@@ -58,7 +58,12 @@ export default function MatchPredictions() {
                         {p.nickname[0]?.toUpperCase()}
                       </div>
                     )}
-                    {p.nickname}
+                    <Link
+                      to={`/room/${roomId}/player/${p.user_id}`}
+                      className="hover:text-brand hover:underline"
+                    >
+                      {p.nickname}
+                    </Link>
                   </td>
                   <td className="text-center font-medium">
                     {p.predicted_home}:{p.predicted_away}
