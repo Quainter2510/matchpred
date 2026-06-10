@@ -24,8 +24,8 @@ export default function Admin() {
     <div className="space-y-4">
       <h1 className="text-2xl font-bold">Глобальная панель</h1>
       <p className="text-sm text-slate-500">
-        Результаты матчей — общие для всех комнат. Управление участниками и
-        паролем — внутри каждой комнаты.
+        Результаты матчей — общие для всех соревнований. Управление участниками
+        и паролем — внутри каждого соревнования.
       </p>
       <div className="flex flex-wrap gap-2 border-b">
         {tabs

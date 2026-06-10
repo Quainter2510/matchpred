@@ -40,7 +40,7 @@ function ScoringRules({ room }: { room: RoomDetail }) {
     <section className="card max-w-lg space-y-3">
       <h2 className="text-lg font-semibold">Правила начисления очков</h2>
       <p className="text-sm text-slate-500">
-        Действуют для этой комнаты. Применяются к ещё не начисленным прогнозам —
+        Действуют для этого соревнования. Применяются к ещё не начисленным прогнозам —
         задавайте до завершения матчей.
       </p>
       {RULE_FIELDS.map((f) => (
@@ -79,12 +79,12 @@ function ArchiveControl({ room }: { room: RoomDetail }) {
   return (
     <section className="card max-w-lg space-y-3">
       <h2 className="text-lg font-semibold">
-        {room.is_active ? "Архивировать комнату" : "Восстановить комнату"}
+        {room.is_active ? "Архивировать соревнование" : "Восстановить соревнование"}
       </h2>
       <p className="text-sm text-slate-500">
         {room.is_active
-          ? "Комната станет доступна только для просмотра: новые прогнозы и начисление очков прекратятся, таблица сохранится."
-          : "Комната снова станет активной: приём прогнозов и начисление возобновятся."}
+          ? "Соревнование станет доступно только для просмотра: новые прогнозы и начисление очков прекратятся, таблица сохранится."
+          : "Соревнование снова станет активным: приём прогнозов и начисление возобновятся."}
       </p>
       <button
         className={room.is_active ? "btn-ghost" : "btn-primary"}
@@ -183,7 +183,7 @@ function Members({ roomId }: { roomId: string }) {
                   <button
                     className="text-xs text-red-600 hover:underline"
                     onClick={() => {
-                      if (confirm(`Удалить ${m.nickname} из комнаты?`))
+                      if (confirm(`Удалить ${m.nickname} из соревнования?`))
                         remove.mutate(m.user_id);
                     }}
                   >
@@ -204,14 +204,14 @@ function RoomPassword({ roomId }: { roomId: string }) {
   const change = useMutation({
     mutationFn: () => api.changeRoomPassword(roomId, pwd),
     onSuccess: () => {
-      alert("Пароль комнаты обновлён");
+      alert("Пароль соревнования обновлён");
       setPwd("");
     },
     onError: (e: any) => alert(e.response?.data?.detail || "Ошибка"),
   });
   return (
     <section className="card max-w-lg space-y-3">
-      <h2 className="text-lg font-semibold">Пароль комнаты</h2>
+      <h2 className="text-lg font-semibold">Пароль соревнования</h2>
       <input
         type="text"
         className="input"

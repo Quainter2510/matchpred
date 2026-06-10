@@ -1,6 +1,8 @@
 import { useEffect } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "./store/auth";
+import { api } from "./api/endpoints";
 import Sidebar from "./components/Sidebar";
 import Login from "./pages/Login";
 import AuthCallback from "./pages/AuthCallback";
@@ -42,6 +44,20 @@ const page = (el: JSX.Element) => (
   </Protected>
 );
 
+// Entry point after login: jump straight to the last opened competition (or the
+// only one), falling back to the hub when there is a choice to make.
+function RootRedirect() {
+  const { data, isLoading } = useQuery({
+    queryKey: ["my-rooms"],
+    queryFn: api.myRooms,
+  });
+  if (isLoading) return <div className="p-8 text-slate-500">Загрузка…</div>;
+  const rooms = (data || []).filter((rm) => rm.is_active);
+  const last = localStorage.getItem("last_room_id");
+  const target = rooms.find((rm) => rm.id === last) ?? (rooms.length === 1 ? rooms[0] : null);
+  return <Navigate to={target ? `/room/${target.id}` : "/rooms"} replace />;
+}
+
 export default function App() {
   const loadMe = useAuth((s) => s.loadMe);
   useEffect(() => {
@@ -55,7 +71,15 @@ export default function App() {
       <Route path="/telegram-auth" element={<TelegramAuthCallback />} />
       <Route path="/setup-profile" element={<SetupProfile />} />
 
-      <Route path="/" element={page(<RoomsHub />)} />
+      <Route
+        path="/"
+        element={
+          <Protected>
+            <RootRedirect />
+          </Protected>
+        }
+      />
+      <Route path="/rooms" element={page(<RoomsHub />)} />
       <Route path="/profile" element={page(<Profile />)} />
       <Route path="/admin/*" element={page(<Admin />)} />
 

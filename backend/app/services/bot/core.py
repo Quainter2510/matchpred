@@ -162,7 +162,7 @@ async def _menu(
 ) -> Reply:
     rooms = await queries.active_rooms(db, user.id)
     if not rooms:
-        return Reply("Вы не состоите ни в одной активной комнате. Вступите в комнату на сайте.")
+        return Reply("Вы не участвуете ни в одном активном соревновании. Вступите на сайте.")
 
     state = await get_state(provider, ext_id)
     if rid:
@@ -174,7 +174,7 @@ async def _menu(
         else:
             await set_state(provider, ext_id, {})
             return Reply(
-                "Выберите комнату:",
+                "Выберите соревнование:",
                 [[Button(r.name[:40], {"a": "menu", "rid": str(r.id)})] for r in rooms],
             )
 
@@ -185,8 +185,8 @@ async def _menu(
         [Button("✍️ Сделать прогноз", {"a": "predict"})],
     ]
     if len(rooms) > 1:
-        buttons.append([Button("🔄 Сменить комнату", {"a": "switch"})])
-    return Reply(f"Комната: {room.name}\nВыберите действие:", buttons)
+        buttons.append([Button("🔄 Сменить соревнование", {"a": "switch"})])
+    return Reply(f"Соревнование: {room.name}\nВыберите действие:", buttons)
 
 
 # ---------------- table ----------------
@@ -197,7 +197,7 @@ async def _table(db: AsyncSession, provider: str, ext_id: str, user: User) -> Re
         return await _menu(db, provider, ext_id, user)
     rows = await queries.leaderboard(db, room.id)
     if not rows:
-        return Reply("В комнате пока нет участников.", [_btn_menu()])
+        return Reply("В соревновании пока нет участников.", [_btn_menu()])
     rows = rows[:50]
     pts_w = max(len(str(p)) for _, p in rows)
     lines = [f"🏆 Таблица — {room.name}", ""]
@@ -328,7 +328,7 @@ async def _predict_input(
     if not accepted:
         note = {
             "deadline_passed": "⚠️ Приём по этому матчу закрыт.",
-            "room_archived": "⚠️ Комната в архиве.",
+            "room_archived": "⚠️ Соревнование в архиве.",
             "invalid_score": "⚠️ Счёт вне диапазона 0–20.",
         }.get(reason, "⚠️ Не принято.")
         if reason == "invalid_score":

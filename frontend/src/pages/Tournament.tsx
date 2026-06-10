@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api, MatchDay } from "../api/endpoints";
@@ -39,6 +40,10 @@ function dayStatus(d: MatchDay): { cls: string; label: string; labelCls: string 
 
 export default function Tournament() {
   const { roomId } = useParams<{ roomId: string }>();
+  // Remember the last opened competition so the app reopens it next time.
+  useEffect(() => {
+    if (roomId) localStorage.setItem("last_room_id", roomId);
+  }, [roomId]);
   const room = useQuery({
     queryKey: ["room", roomId],
     queryFn: () => api.roomDetail(roomId!),
@@ -63,11 +68,11 @@ export default function Tournament() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <Link to="/" className="text-sm text-slate-500 hover:underline">
-            ← Все комнаты
+          <Link to="/rooms" className="text-sm text-slate-500 hover:underline">
+            ← Все соревнования
           </Link>
           <h1 className="text-2xl font-bold">
-            {room.data?.name || "Комната"}
+            {room.data?.name || "Соревнование"}
             {archived && <span className="ml-2 text-sm text-slate-400">(архив)</span>}
           </h1>
           {s && (
@@ -87,7 +92,7 @@ export default function Tournament() {
 
       {archived && (
         <div className="rounded-lg bg-amber-100 px-4 py-2 text-sm text-amber-800">
-          Комната в архиве — приём прогнозов и начисление очков закрыты. Таблица
+          Соревнование в архиве — приём прогнозов и начисление очков закрыты. Таблица
           доступна только для просмотра.
         </div>
       )}

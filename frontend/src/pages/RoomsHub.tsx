@@ -43,7 +43,7 @@ function JoinCard({ room, onJoined }: { room: Room; onJoined: () => void }) {
           <input
             type="password"
             className="input"
-            placeholder="Пароль комнаты"
+            placeholder="Пароль соревнования"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
@@ -85,7 +85,7 @@ export default function RoomsHub() {
       loadMe();
       navigate(`/room/${room.id}`);
     },
-    onError: (e: any) => alert(e.response?.data?.detail || "Не удалось создать комнату"),
+    onError: (e: any) => alert(e.response?.data?.detail || "Не удалось создать соревнование"),
   });
 
   const myIds = new Set((mine.data || []).map((r) => r.id));
@@ -101,15 +101,15 @@ export default function RoomsHub() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Комнаты</h1>
+      <h1 className="text-2xl font-bold">Соревнования</h1>
 
       <section className="card">
-        <h2 className="mb-3 text-lg font-semibold">Мои комнаты</h2>
+        <h2 className="mb-3 text-lg font-semibold">Мои соревнования</h2>
         {mine.isLoading ? (
           <p className="text-slate-500">Загрузка…</p>
         ) : !activeRooms.length ? (
           <p className="text-slate-500">
-            Вы пока не состоите ни в одной активной комнате. Найдите комнату ниже и войдите по паролю.
+            Вы пока не участвуете ни в одном активном соревновании. Найдите соревнование ниже и войдите по паролю.
           </p>
         ) : (
           <div className="grid gap-2">
@@ -149,10 +149,10 @@ export default function RoomsHub() {
 
       {superadmin && (
         <section className="card space-y-3">
-          <h2 className="text-lg font-semibold">Создать комнату</h2>
+          <h2 className="text-lg font-semibold">Создать соревнование</h2>
           <input
             className="input"
-            placeholder="Название комнаты"
+            placeholder="Название соревнования"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
           />
@@ -173,7 +173,7 @@ export default function RoomsHub() {
       )}
 
       <section className="card space-y-3">
-        <h2 className="text-lg font-semibold">Найти комнату</h2>
+        <h2 className="text-lg font-semibold">Найти соревнование</h2>
         <input
           className="input"
           placeholder="Поиск по названию"
@@ -183,7 +183,7 @@ export default function RoomsHub() {
         {search.isLoading ? (
           <p className="text-slate-500">Загрузка…</p>
         ) : !joinable.length ? (
-          <p className="text-slate-500">Нет доступных комнат.</p>
+          <p className="text-slate-500">Нет доступных соревнований.</p>
         ) : (
           <div className="grid gap-2">
             {joinable.map((room) => (

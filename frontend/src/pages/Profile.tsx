@@ -35,7 +35,7 @@ export default function Profile() {
     user?.system_role === "superadmin"
       ? "Суперадмин"
       : user?.is_any_admin
-      ? "Админ комнаты"
+      ? "Админ соревнования"
       : "Игрок";
 
   return (
