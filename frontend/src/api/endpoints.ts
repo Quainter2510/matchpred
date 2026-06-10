@@ -134,6 +134,8 @@ export interface PlayerProfile {
   place: number | null;
   total_points: number;
   exact_scores_count: number;
+  diff_count: number;
+  outcome_count: number;
   is_self: boolean;
   specials_revealed: boolean;
   first_match_at: string;

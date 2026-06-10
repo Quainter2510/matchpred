@@ -30,6 +30,8 @@ class PlayerProfile(BaseModel):
     place: int | None = None
     total_points: int
     exact_scores_count: int
+    diff_count: int = 0
+    outcome_count: int = 0
     is_self: bool
     # Special predictions are revealed only after the tournament starts.
     specials_revealed: bool = False

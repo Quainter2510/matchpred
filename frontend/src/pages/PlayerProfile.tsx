@@ -55,7 +55,7 @@ export default function PlayerProfile() {
   useEffect(() => {
     const onScroll = () => {
       const y = window.scrollY;
-      setCompact((prev) => (prev ? y > 40 : y > 180));
+      setCompact((prev) => (prev ? y > 40 : y > 210));
     };
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
@@ -94,35 +94,45 @@ export default function PlayerProfile() {
         </div>
         {compact ? (
           <div className="flex items-center gap-3 pb-2">
+            {/* Big place to the left of the avatar */}
+            <div className="shrink-0 px-1 text-center text-3xl font-extrabold leading-none tabular-nums text-slate-700">
+              {placeStr}
+            </div>
             <Avatar url={data.avatar_url} nick={data.nickname} size="h-9 w-9" />
             <div className="min-w-0 flex-1 truncate font-semibold">{data.nickname}</div>
-            <div className="flex gap-3 text-sm">
-              <span className="text-slate-500">{placeStr}</span>
-              <span className="font-semibold">{data.total_points} очк.</span>
-              <span className="text-emerald-600">{data.exact_scores_count}✓</span>
+            <div className="shrink-0 text-right leading-none">
+              <div className="text-2xl font-extrabold">{data.total_points}</div>
+              <div className="text-[10px] uppercase tracking-wide text-slate-400">очки</div>
             </div>
           </div>
         ) : (
           <div className="space-y-3 pb-4 pt-2">
             <div className="flex items-center gap-4">
               <Avatar url={data.avatar_url} nick={data.nickname} size="h-20 w-20" />
-              <div>
-                <div className="text-2xl font-bold">{data.nickname}</div>
-                <div className="mt-2 flex gap-4 text-sm">
+              <div className="min-w-0">
+                <div className="truncate text-2xl font-bold">{data.nickname}</div>
+                <div className="mt-2 flex items-end gap-6">
                   <div>
-                    <div className="text-slate-400">Место</div>
-                    <div className="text-lg font-semibold">{placeStr}</div>
+                    <div className="text-xs uppercase tracking-wide text-slate-400">Место</div>
+                    <div className="text-5xl font-extrabold leading-none">{placeStr}</div>
                   </div>
                   <div>
-                    <div className="text-slate-400">Очки</div>
-                    <div className="text-lg font-semibold">{data.total_points}</div>
-                  </div>
-                  <div>
-                    <div className="text-slate-400">Точные счёта</div>
-                    <div className="text-lg font-semibold text-emerald-600">
-                      {data.exact_scores_count}
+                    <div className="text-xs uppercase tracking-wide text-slate-400">Очки</div>
+                    <div className="text-5xl font-extrabold leading-none text-brand">
+                      {data.total_points}
                     </div>
                   </div>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+                  <span>
+                    Точные: <b className="text-emerald-600">{data.exact_scores_count}</b>
+                  </span>
+                  <span>
+                    Разница: <b className="text-sky-600">{data.diff_count}</b>
+                  </span>
+                  <span>
+                    Исход: <b className="text-amber-600">{data.outcome_count}</b>
+                  </span>
                 </div>
               </div>
             </div>

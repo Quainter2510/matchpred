@@ -74,8 +74,25 @@ async def player_profile(
     ).all()
 
     matches: list[PlayerProfileMatch] = []
+    exact_count = diff_count = outcome_count = 0
     for m, pred in rows:
         started = now >= m.kickoff_at
+        # Tally hit categories on finished, scored matches (room rules already
+        # baked into points; here we just classify the prediction vs the result).
+        if (
+            pred is not None
+            and pred.points_awarded is not None
+            and m.home_score_ft is not None
+            and m.away_score_ft is not None
+        ):
+            pred_diff = pred.predicted_home - pred.predicted_away
+            real_diff = m.home_score_ft - m.away_score_ft
+            if pred.is_exact:
+                exact_count += 1
+            elif pred_diff == real_diff:
+                diff_count += 1
+            elif (pred_diff > 0) == (real_diff > 0) and (pred_diff < 0) == (real_diff < 0):
+                outcome_count += 1
         show = pred is not None and (started or reveal)
         matches.append(
             PlayerProfileMatch(
@@ -104,6 +121,8 @@ async def player_profile(
         place=place,
         total_points=member.total_points,
         exact_scores_count=member.exact_scores_count,
+        diff_count=diff_count,
+        outcome_count=outcome_count,
         is_self=is_self,
         specials_revealed=specials_revealed,
         first_match_at=ctx.room.first_match_at,
