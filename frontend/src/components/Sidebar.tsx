@@ -2,8 +2,10 @@ import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../store/auth";
 
+// «Соревнования» ведёт на "/" — корневой redirect открывает последнее
+// посещённое соревнование (или хаб, если выбора нет).
 const nav = [
-  { to: "/rooms", label: "Соревнования", icon: "🏆" },
+  { to: "/", label: "Соревнования", icon: "🏆" },
   { to: "/profile", label: "Профиль", icon: "👤" },
 ];
 
@@ -22,7 +24,10 @@ export default function Sidebar() {
   };
 
   const active = (to: string) =>
-    to === "/" ? location.pathname === "/" : location.pathname.startsWith(to);
+    to === "/"
+      ? // Пункт «Соревнования» активен и на хабе, и внутри комнаты.
+        location.pathname === "/" || location.pathname.startsWith("/room")
+      : location.pathname.startsWith(to);
 
   return (
     <>

@@ -11,11 +11,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import require_any_admin, require_superadmin
-from app.models import AuditLog, Match, User
+from app.models import AuditLog, User
 from app.schemas.admin import AuditLogOut, TransferRequest
 from app.schemas.special import ScorerResultRequest
 from app.services import audit, football_api
 from app.services.recalc import recalculate_all, score_top_scorer
+from app.services.sync import apply_fixtures
 
 router = APIRouter(tags=["admin"])
 
@@ -39,6 +40,7 @@ EVENT_LABELS_RU = {
     "room_deleted": "Удалена комната",
     "room_joined": "Вход в комнату",
     "room_password_changed": "Смена пароля комнаты",
+    "room_rules_changed": "Изменён регламент",
     "api_sync": "Синхронизация с API",
     "nickname_changed": "Смена никнейма",
 }
@@ -54,38 +56,18 @@ async def sync_api(
     except Exception as exc:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"API-Football error: {exc}")
 
-    created, updated = 0, 0
-    for fx in fixtures:
-        existing = await db.scalar(
-            select(Match).where(Match.api_football_id == fx["api_football_id"])
-        )
-        if existing:
-            existing.kickoff_at = fx["kickoff_at"]
-            existing.match_date = fx["match_date"]
-            existing.stage = fx["stage"]
-            existing.group_name = fx.get("group_name")
-            existing.home_team = fx["home_team"]
-            existing.away_team = fx["away_team"]
-            existing.status = fx["status"]
-            if fx["status"] == "finished":
-                existing.home_score_ft = fx["home_score_ft"]
-                existing.away_score_ft = fx["away_score_ft"]
-            updated += 1
-        else:
-            db.add(Match(**fx))
-            created += 1
-
+    stats = await apply_fixtures(db, fixtures)
     await audit.log_event(
         db,
         "api_sync",
         actor_id=user.id,
         actor_nickname=user.nickname,
-        details={"created": created, "updated": updated},
+        details=stats,
     )
     await db.commit()
     summary = await recalculate_all(db)
     await db.commit()
-    return {"created": created, "updated": updated, **summary}
+    return {**stats, **summary}
 
 
 @router.post("/admin/recalculate")

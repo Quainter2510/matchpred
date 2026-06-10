@@ -33,6 +33,12 @@ class RoomDetail(RoomSummary):
     total_points: int | None = None
     place: int | None = None
     scoring: RoomScoring | None = None
+    rules_text: str | None = None
+
+
+class RoomRulesTextUpdate(BaseModel):
+    # Пустая строка = сбросить к стандартному описанию очков.
+    rules_text: str = Field(max_length=10000)
 
 
 class RoomArchiveUpdate(BaseModel):

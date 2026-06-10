@@ -24,6 +24,7 @@ EVENT_TYPES = {
     "room_deleted",
     "room_joined",
     "room_password_changed",
+    "room_rules_changed",
     "api_sync",
     "nickname_changed",
 }

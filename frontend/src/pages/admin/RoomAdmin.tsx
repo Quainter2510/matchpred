@@ -65,6 +65,46 @@ function ScoringRules({ room }: { room: RoomDetail }) {
   );
 }
 
+function RulesText({ room }: { room: RoomDetail }) {
+  const qc = useQueryClient();
+  const [text, setText] = useState(room.rules_text ?? "");
+  useEffect(() => setText(room.rules_text ?? ""), [room.rules_text]);
+
+  const save = useMutation({
+    mutationFn: () => api.updateRoomRulesText(room.id, text),
+    onSuccess: () => {
+      alert("Регламент сохранён");
+      qc.invalidateQueries({ queryKey: ["room", room.id] });
+    },
+    onError: (e: any) => alert(e.response?.data?.detail || "Ошибка"),
+  });
+
+  return (
+    <section className="card max-w-lg space-y-3">
+      <h2 className="text-lg font-semibold">Регламент соревнования</h2>
+      <p className="text-sm text-slate-500">
+        Участники видят этот текст по кнопке «i» рядом с названием соревнования.
+        Если оставить пустым — показывается стандартное описание начисления очков.
+      </p>
+      <textarea
+        className="input min-h-[10rem]"
+        rows={8}
+        maxLength={10000}
+        placeholder="Например: правила, сроки, призы…"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+      />
+      <button
+        className="btn-primary"
+        onClick={() => save.mutate()}
+        disabled={save.isPending}
+      >
+        {save.isPending ? "Сохранение…" : "Сохранить регламент"}
+      </button>
+    </section>
+  );
+}
+
 function ArchiveControl({ room }: { room: RoomDetail }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -254,6 +294,7 @@ export default function RoomAdmin() {
       </div>
       <Members roomId={roomId!} />
       <RoomPassword roomId={roomId!} />
+      {room.data && <RulesText room={room.data} />}
       {isSuper && room.data && <ScoringRules room={room.data} />}
       {isSuper && room.data && <ArchiveControl room={room.data} />}
     </div>

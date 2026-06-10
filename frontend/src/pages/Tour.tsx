@@ -10,6 +10,9 @@ export default function Tour() {
     queryKey: ["matches", roomId, date],
     queryFn: () => api.matchesByDate(roomId!, date!),
     enabled: !!roomId && !!date,
+    // Бэкенд опрашивает API-Football каждые 5 минут — подтягиваем live-счёт
+    // и обновлённые очки без перезагрузки страницы.
+    refetchInterval: 60_000,
   });
 
   return (

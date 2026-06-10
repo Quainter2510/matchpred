@@ -9,6 +9,7 @@ from sqlalchemy import (
     Integer,
     SmallInteger,
     String,
+    Text,
     func,
 )
 from sqlalchemy.dialects.postgresql import UUID
@@ -42,6 +43,10 @@ class Room(Base):
     # is_active=False means the room is archived: read-only, not scored, but the
     # leaderboard stays viewable.
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # Free-form regulations text shown behind the "i" button next to the
+    # title. NULL = show the default description built from the point values.
+    rules_text: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Per-room scoring rules (a superadmin may change these per room).
     points_exact: Mapped[int] = mapped_column(SmallInteger, nullable=False, server_default="5")

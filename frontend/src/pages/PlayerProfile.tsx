@@ -206,8 +206,12 @@ export default function PlayerProfile() {
                 <div className="mt-1 grid grid-cols-3 items-center gap-2">
                   <TeamName team={m.home_team} flagSide="right" className="justify-end text-right font-medium" />
                   <div className="text-center">
-                    <div className="text-lg font-bold">
-                      {m.status === "finished" ? score(m.home_score_ft, m.away_score_ft) : "—:—"}
+                    <div
+                      className={`text-lg font-bold ${m.status === "live" ? "text-red-600" : ""}`}
+                    >
+                      {m.home_score_ft != null && m.away_score_ft != null
+                        ? score(m.home_score_ft, m.away_score_ft)
+                        : "—:—"}
                     </div>
                     <div className="text-xs text-slate-500">
                       прогноз: {score(m.predicted_home, m.predicted_away)}

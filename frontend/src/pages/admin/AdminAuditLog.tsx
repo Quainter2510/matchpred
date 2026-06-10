@@ -17,6 +17,11 @@ const EVENT_LABELS: Record<string, string> = {
   champion_selected: "Выбран чемпион",
   top_scorer_selected: "Выбран бомбардир",
   tournament_password_changed: "Смена пароля турнира",
+  room_created: "Создана комната",
+  room_deleted: "Удалена комната",
+  room_joined: "Вход в комнату",
+  room_password_changed: "Смена пароля комнаты",
+  room_rules_changed: "Изменён регламент",
   api_sync: "Синхронизация с API",
   nickname_changed: "Смена никнейма",
 };

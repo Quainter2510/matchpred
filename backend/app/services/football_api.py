@@ -114,8 +114,14 @@ async def fetch_groups() -> dict[str, str]:
     return out
 
 
-async def fetch_fixtures() -> list[dict]:
-    """All fixtures for the configured league + season."""
+async def fetch_fixtures(with_groups: bool = True) -> list[dict]:
+    """All fixtures for the configured league + season.
+
+    with_groups=False пропускает запрос /standings (буквы групп) — так
+    5-минутный live-опрос стоит один запрос к API вместо двух. Группы у уже
+    созданных матчей при этом не затираются (apply_fixtures обновляет
+    group_name только когда он есть в данных).
+    """
     data = await _get(
         "/fixtures",
         {
@@ -123,7 +129,7 @@ async def fetch_fixtures() -> list[dict]:
             "season": settings.API_FOOTBALL_SEASON,
         },
     )
-    groups = await fetch_groups()
+    groups = await fetch_groups() if with_groups else None
     return [_normalize_fixture(fx, groups) for fx in data.get("response", [])]
 
 

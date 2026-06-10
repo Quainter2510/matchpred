@@ -32,6 +32,7 @@ export interface RoomDetail extends Room {
   total_points: number | null;
   place: number | null;
   scoring: RoomScoring | null;
+  rules_text: string | null;
 }
 
 export interface MatchDay {
@@ -197,6 +198,8 @@ export const api = {
     client.patch(`${r(roomId)}/archive`, { archived }).then((x) => x.data),
   updateRoomRules: (roomId: string, scoring: RoomScoring) =>
     client.patch<RoomScoring>(`${r(roomId)}/rules`, scoring).then((x) => x.data),
+  updateRoomRulesText: (roomId: string, rules_text: string) =>
+    client.patch(`${r(roomId)}/rules-text`, { rules_text }).then((x) => x.data),
 
   // room members (room admin)
   roomMembers: (roomId: string) =>

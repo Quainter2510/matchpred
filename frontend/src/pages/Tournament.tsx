@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
-import { api, MatchDay } from "../api/endpoints";
+import { api, MatchDay, RoomScoring } from "../api/endpoints";
 import LeaderboardTable from "../components/LeaderboardTable";
 import SpecialPredictionCard from "./SpecialPredictionCard";
 import { useAuth } from "../store/auth";
@@ -39,6 +39,19 @@ function dayStatus(d: MatchDay): { cls: string; label: string; labelCls: string 
   return { cls: "hover:bg-slate-50", label: "", labelCls: "" };
 }
 
+// Стандартный регламент, когда админ не заполнил свой текст.
+function defaultRules(s: RoomScoring | null | undefined): string {
+  if (!s) return "Регламент не заполнен.";
+  return [
+    "Начисление очков:",
+    `• точный счёт — ${s.points_exact}`,
+    `• разница мячей — ${s.points_diff}`,
+    `• исход (победитель/ничья) — ${s.points_outcome}`,
+    `• чемпион турнира — ${s.points_champion}`,
+    `• лучший бомбардир — ${s.points_scorer}`,
+  ].join("\n");
+}
+
 export default function Tournament() {
   const { roomId } = useParams<{ roomId: string }>();
   // Remember the last opened competition so the app reopens it next time.
@@ -65,9 +78,10 @@ export default function Tournament() {
   const isRoomAdmin = room.data?.my_role === "admin";
   const isAdmin = me?.system_role === "superadmin" || isRoomAdmin;
   const archived = room.data && !room.data.is_active;
-  const s = room.data?.scoring;
   const started = !!room.data?.first_match_at && isPast(room.data.first_match_at);
   const [tab, setTab] = useState<"table" | "predictions">("table");
+  const [showRules, setShowRules] = useState(false);
+  const rulesText = room.data?.rules_text || defaultRules(room.data?.scoring);
 
   return (
     <div className="space-y-6">
@@ -76,17 +90,20 @@ export default function Tournament() {
           <Link to="/rooms" className="text-sm text-slate-500 hover:underline">
             ← Все соревнования
           </Link>
-          <h1 className="text-2xl font-bold">
+          <h1 className="flex items-center gap-2 text-2xl font-bold">
             {room.data?.name || "Соревнование"}
-            {archived && <span className="ml-2 text-sm text-slate-400">(архив)</span>}
+            {archived && <span className="text-sm font-normal text-slate-400">(архив)</span>}
+            {room.data && (
+              <button
+                onClick={() => setShowRules(true)}
+                title="Регламент соревнования"
+                aria-label="Регламент соревнования"
+                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-slate-300 text-xs font-semibold italic text-slate-500 hover:bg-slate-100"
+              >
+                i
+              </button>
+            )}
           </h1>
-          {s && (
-            <p className="text-xs text-slate-500">
-              Очки: точный {s.points_exact} · разница {s.points_diff} · исход{" "}
-              {s.points_outcome} · чемпион {s.points_champion} · бомбардир{" "}
-              {s.points_scorer}
-            </p>
-          )}
         </div>
         {isRoomAdmin && (
           <Link to={`/room/${roomId}/admin`} className="btn-ghost">
@@ -94,6 +111,30 @@ export default function Tournament() {
           </Link>
         )}
       </div>
+
+      {showRules && (
+        <div
+          className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setShowRules(false)}
+        >
+          <div
+            className="max-h-[80vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-lg font-semibold">Регламент</h2>
+              <button
+                className="text-slate-400 hover:text-slate-600"
+                onClick={() => setShowRules(false)}
+                aria-label="Закрыть"
+              >
+                ✕
+              </button>
+            </div>
+            <p className="whitespace-pre-line text-sm text-slate-700">{rulesText}</p>
+          </div>
+        </div>
+      )}
 
       {archived && (
         <div className="rounded-lg bg-amber-100 px-4 py-2 text-sm text-amber-800">

@@ -23,6 +23,7 @@ from app.schemas.room import (
     RoomMemberOut,
     RoomPasswordUpdate,
     RoomRoleUpdate,
+    RoomRulesTextUpdate,
     RoomScoring,
     RoomSummary,
 )
@@ -98,6 +99,7 @@ async def create_room(
         my_role="admin",
         first_match_at=room.first_match_at,
         scoring=_scoring(room),
+        rules_text=room.rules_text,
     )
 
 
@@ -252,6 +254,7 @@ async def room_detail(
         first_match_at=room.first_match_at,
         total_points=ctx.member.total_points if ctx.member else None,
         scoring=_scoring(room),
+        rules_text=room.rules_text,
     )
 
 
@@ -291,6 +294,28 @@ async def update_rules(
     room.points_scorer = payload.points_scorer
     await db.commit()
     return _scoring(room)
+
+
+@router.patch("/{room_id}/rules-text")
+async def update_rules_text(
+    payload: RoomRulesTextUpdate,
+    ctx: RoomContext = Depends(require_room_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Регламент соревнования (кнопка «i» у заголовка). Пустая строка
+    сбрасывает к стандартному описанию очков."""
+    text = payload.rules_text.strip() or None
+    ctx.room.rules_text = text
+    await audit.log_event(
+        db,
+        "room_rules_changed",
+        actor_id=ctx.user.id,
+        actor_nickname=ctx.user.nickname,
+        target_id=ctx.room.id,
+        details={"room": ctx.room.name, "length": len(text or "")},
+    )
+    await db.commit()
+    return {"ok": True, "rules_text": text}
 
 
 # ---------------- Members (room admin) ----------------

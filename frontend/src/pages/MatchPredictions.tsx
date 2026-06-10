@@ -1,20 +1,24 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/endpoints";
+import { LiveBadge } from "../components/MatchCard";
 import TeamName from "../components/TeamName";
 
 export default function MatchPredictions() {
   const { roomId, id } = useParams<{ roomId: string; id: string }>();
   const navigate = useNavigate();
+  // Раз в минуту подтягиваем live-счёт и очки, начисленные после завершения.
   const match = useQuery({
     queryKey: ["match", roomId, id],
     queryFn: () => api.match(roomId!, id!),
     enabled: !!roomId && !!id,
+    refetchInterval: 60_000,
   });
   const preds = useQuery({
     queryKey: ["match-preds", roomId, id],
     queryFn: () => api.matchPredictions(roomId!, id!),
     enabled: !!roomId && !!id,
+    refetchInterval: 60_000,
   });
 
   return (
@@ -25,12 +29,15 @@ export default function MatchPredictions() {
       {match.data && (
         <h1 className="flex flex-wrap items-center gap-2 text-xl font-bold">
           <TeamName team={match.data.home_team} />
-          <span>
+          <span className={match.data.status === "live" ? "text-red-600" : ""}>
             {match.data.home_score_ft ?? ""}
-            {match.data.status === "finished" ? " : " : " — "}
+            {match.data.home_score_ft != null && match.data.away_score_ft != null
+              ? " : "
+              : " — "}
             {match.data.away_score_ft ?? ""}
           </span>
           <TeamName team={match.data.away_team} />
+          {match.data.status === "live" && <LiveBadge />}
         </h1>
       )}
       <div className="card">

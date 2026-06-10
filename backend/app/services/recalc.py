@@ -33,6 +33,10 @@ async def _bump_member(
 async def score_match(db: AsyncSession, match: Match) -> int:
     """Score all unscored predictions for a finished match, in every active
     room, using that room's point rules. Returns the number scored."""
+    # Live-матчи хранят текущий счёт в тех же колонках — очки начисляем
+    # только когда матч завершён.
+    if match.status != "finished":
+        return 0
     if match.home_score_ft is None or match.away_score_ft is None:
         return 0
 
@@ -70,10 +74,47 @@ async def score_match(db: AsyncSession, match: Match) -> int:
     return scored
 
 
+async def rescore_match(db: AsyncSession, match: Match) -> int:
+    """Re-score a match whose final score changed after points were awarded:
+    take back the previously awarded points, then score again with the new
+    score. Archived rooms stay frozen (their points are neither taken back
+    nor re-awarded)."""
+    rooms = await _rooms_map(db)
+    rows = (
+        await db.execute(
+            select(Prediction).where(
+                Prediction.match_id == match.id,
+                Prediction.points_awarded.is_not(None),
+            )
+        )
+    ).scalars().all()
+
+    reset = 0
+    for pred in rows:
+        room = rooms.get(pred.room_id)
+        if not room or not room.is_active:
+            continue
+        await _bump_member(
+            db,
+            pred.room_id,
+            pred.user_id,
+            -(pred.points_awarded or 0),
+            -1 if pred.is_exact else 0,
+        )
+        pred.points_awarded = None
+        pred.is_exact = None
+        reset += 1
+
+    if reset:
+        await invalidate_leaderboard_cache()
+    return await score_match(db, match)
+
+
 async def recalculate_all(db: AsyncSession) -> dict:
     finished = (
         await db.execute(
             select(Match).where(
+                Match.status == "finished",
                 Match.home_score_ft.is_not(None),
                 Match.away_score_ft.is_not(None),
             )

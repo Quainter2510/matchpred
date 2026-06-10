@@ -22,7 +22,7 @@ from app.schemas.match import (
     PlayerPredictionOut,
 )
 from app.services import audit
-from app.services.recalc import score_match
+from app.services.recalc import rescore_match, score_match
 
 # Room-scoped match reads (attach the caller's prediction in this room).
 room_router = APIRouter(prefix="/rooms/{room_id}/matches", tags=["matches"])
@@ -223,14 +223,25 @@ async def set_result(
     if not match:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Match not found")
 
-    had_result = match.home_score_ft is not None and match.away_score_ft is not None
+    had_result = (
+        match.status == "finished"
+        and match.home_score_ft is not None
+        and match.away_score_ft is not None
+    )
     prev = {"home": match.home_score_ft, "away": match.away_score_ft}
+    score_changed = had_result and (
+        prev["home"] != payload.home_score_ft or prev["away"] != payload.away_score_ft
+    )
     match.home_score_ft = payload.home_score_ft
     match.away_score_ft = payload.away_score_ft
     match.status = "finished"
 
     # Scores every room's predictions for this match (results are global).
-    scored = await score_match(db, match)
+    # A corrected result takes back the old points and awards them anew.
+    if score_changed:
+        scored = await rescore_match(db, match)
+    else:
+        scored = await score_match(db, match)
     details = {
         "match": f"{match.home_team} — {match.away_team}",
         "home": payload.home_score_ft,

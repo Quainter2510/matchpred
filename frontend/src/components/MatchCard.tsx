@@ -5,9 +5,20 @@ import { formatStage } from "../utils/stage";
 import Countdown from "./Countdown";
 import TeamName from "./TeamName";
 
+export function LiveBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 rounded bg-red-100 px-1.5 py-0.5 text-xs font-semibold text-red-600">
+      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-red-600" />
+      LIVE
+    </span>
+  );
+}
+
 export default function MatchCard({ match, roomId }: { match: Match; roomId: string }) {
   const started = isPast(match.kickoff_at);
   const finished = match.status === "finished";
+  const live = match.status === "live";
+  const hasScore = match.home_score_ft != null && match.away_score_ft != null;
   const p = match.my_prediction;
 
   return (
@@ -17,7 +28,15 @@ export default function MatchCard({ match, roomId }: { match: Match; roomId: str
           {formatTime(match.kickoff_at)} · {formatStage(match.stage, match.group_name)}
         </span>
         <span className="shrink-0">
-          {!started ? <Countdown to={match.kickoff_at} /> : finished ? "Завершён" : "Идёт/закрыт"}
+          {live ? (
+            <LiveBadge />
+          ) : !started ? (
+            <Countdown to={match.kickoff_at} />
+          ) : finished ? (
+            "Завершён"
+          ) : (
+            "Идёт/закрыт"
+          )}
         </span>
       </div>
 
@@ -25,8 +44,10 @@ export default function MatchCard({ match, roomId }: { match: Match; roomId: str
         <div className="flex min-w-0 flex-1 justify-end">
           <TeamName team={match.home_team} flagSide="right" className="text-right font-medium" />
         </div>
-        <div className="shrink-0 px-1 text-center text-lg font-bold">
-          {finished ? `${match.home_score_ft}:${match.away_score_ft}` : "vs"}
+        <div
+          className={`shrink-0 px-1 text-center text-lg font-bold ${live ? "text-red-600" : ""}`}
+        >
+          {hasScore ? `${match.home_score_ft}:${match.away_score_ft}` : "vs"}
         </div>
         <div className="flex min-w-0 flex-1 justify-start">
           <TeamName team={match.away_team} className="text-left font-medium" />
