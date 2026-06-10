@@ -5,8 +5,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.dependencies import is_admin_or_super, require_player
-from app.models import SpecialPrediction, Tournament, User
+from app.dependencies import RoomContext, get_current_user, require_room_member
+from app.models import SpecialPrediction, User
 from app.schemas.special import (
     PlayerSearchItem,
     SpecialPredictionOut,
@@ -15,23 +15,26 @@ from app.schemas.special import (
 )
 from app.services import audit, football_api
 
-router = APIRouter(tags=["special"])
+router = APIRouter(prefix="/rooms/{room_id}/special-prediction", tags=["special"])
+players_router = APIRouter(tags=["players"])
 
 
-async def _deadline(db: AsyncSession) -> datetime | None:
-    t = await db.scalar(select(Tournament).limit(1))
-    return t.first_match_at if t else None
+def _locked(room) -> bool:
+    return bool(room.first_match_at and datetime.now(timezone.utc) >= room.first_match_at)
 
 
-@router.get("/special-prediction/my", response_model=SpecialPredictionOut)
+@router.get("/my", response_model=SpecialPredictionOut)
 async def my_special(
-    user: User = Depends(require_player), db: AsyncSession = Depends(get_db)
+    ctx: RoomContext = Depends(require_room_member),
+    db: AsyncSession = Depends(get_db),
 ):
     sp = await db.scalar(
-        select(SpecialPrediction).where(SpecialPrediction.user_id == user.id)
+        select(SpecialPrediction).where(
+            SpecialPrediction.room_id == ctx.room.id,
+            SpecialPrediction.user_id == ctx.user.id,
+        )
     )
-    deadline = await _deadline(db)
-    locked = bool(deadline and datetime.now(timezone.utc) >= deadline)
+    locked = _locked(ctx.room)
     if not sp:
         return SpecialPredictionOut(locked=locked)
     return SpecialPredictionOut(
@@ -44,48 +47,54 @@ async def my_special(
     )
 
 
-@router.put("/special-prediction", response_model=SpecialPredictionOut)
+@router.put("", response_model=SpecialPredictionOut)
 async def update_special(
     payload: SpecialPredictionUpdate,
-    user: User = Depends(require_player),
+    ctx: RoomContext = Depends(require_room_member),
     db: AsyncSession = Depends(get_db),
 ):
-    deadline = await _deadline(db)
-    now = datetime.now(timezone.utc)
-    if deadline and now >= deadline:
+    if not ctx.room.is_active:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Room is archived")
+    if _locked(ctx.room):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Special predictions locked")
 
     sp = await db.scalar(
-        select(SpecialPrediction).where(SpecialPrediction.user_id == user.id)
+        select(SpecialPrediction).where(
+            SpecialPrediction.room_id == ctx.room.id,
+            SpecialPrediction.user_id == ctx.user.id,
+        )
     )
     prev_champion = sp.champion_team if sp else None
     prev_scorer = sp.top_scorer_api_id if sp else None
     if not sp:
-        sp = SpecialPrediction(user_id=user.id, locked_at=deadline)
+        sp = SpecialPrediction(
+            room_id=ctx.room.id, user_id=ctx.user.id, locked_at=ctx.room.first_match_at
+        )
         db.add(sp)
     sp.champion_team = payload.champion_team
     sp.top_scorer_name = payload.top_scorer_name
     sp.top_scorer_api_id = payload.top_scorer_api_id
-    sp.locked_at = deadline
+    sp.locked_at = ctx.room.first_match_at
 
     # Журнал: пишем только при реальном изменении выбора.
     if payload.champion_team and payload.champion_team != prev_champion:
         await audit.log_event(
             db,
             "champion_selected",
-            actor_id=user.id,
-            actor_nickname=user.nickname,
-            target_id=user.id,
-            details={"champion": payload.champion_team},
+            actor_id=ctx.user.id,
+            actor_nickname=ctx.user.nickname,
+            target_id=ctx.user.id,
+            details={"room_id": str(ctx.room.id), "champion": payload.champion_team},
         )
     if payload.top_scorer_api_id and payload.top_scorer_api_id != prev_scorer:
         await audit.log_event(
             db,
             "top_scorer_selected",
-            actor_id=user.id,
-            actor_nickname=user.nickname,
-            target_id=user.id,
+            actor_id=ctx.user.id,
+            actor_nickname=ctx.user.nickname,
+            target_id=ctx.user.id,
             details={
+                "room_id": str(ctx.room.id),
                 "player_api_id": payload.top_scorer_api_id,
                 "player_name": payload.top_scorer_name,
             },
@@ -102,20 +111,20 @@ async def update_special(
     )
 
 
-@router.get("/special-prediction/all", response_model=list[SpecialPredictionPublic])
+@router.get("/all", response_model=list[SpecialPredictionPublic])
 async def all_special(
-    user: User = Depends(require_player), db: AsyncSession = Depends(get_db)
+    ctx: RoomContext = Depends(require_room_member),
+    db: AsyncSession = Depends(get_db),
 ):
-    deadline = await _deadline(db)
-    now = datetime.now(timezone.utc)
-    visible = (deadline and now >= deadline) or await is_admin_or_super(db, user)
-    if not visible:
+    if not _locked(ctx.room) and not ctx.is_admin:
         raise HTTPException(
             status.HTTP_403_FORBIDDEN, "Special predictions hidden until deadline"
         )
     rows = (
         await db.execute(
-            select(SpecialPrediction, User).join(User, User.id == SpecialPrediction.user_id)
+            select(SpecialPrediction, User)
+            .join(User, User.id == SpecialPrediction.user_id)
+            .where(SpecialPrediction.room_id == ctx.room.id)
         )
     ).all()
     return [
@@ -132,10 +141,10 @@ async def all_special(
     ]
 
 
-@router.get("/players/search", response_model=list[PlayerSearchItem])
+@players_router.get("/players/search", response_model=list[PlayerSearchItem])
 async def players_search(
     q: str = Query(min_length=3),
-    user: User = Depends(require_player),
+    user: User = Depends(get_current_user),
 ):
     try:
         results = await football_api.search_players(q)

@@ -22,13 +22,16 @@ from app.database import Base
 class Prediction(Base):
     __tablename__ = "predictions"
     __table_args__ = (
-        UniqueConstraint("user_id", "match_id", name="uq_user_match"),
-        Index("ix_predictions_match_id", "match_id"),
-        Index("ix_predictions_user_id", "user_id"),
+        UniqueConstraint("room_id", "user_id", "match_id", name="uq_room_user_match"),
+        Index("ix_predictions_room_match", "room_id", "match_id"),
+        Index("ix_predictions_room_user", "room_id", "user_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    room_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("rooms.id", ondelete="CASCADE"), nullable=False
     )
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
@@ -50,14 +53,19 @@ class Prediction(Base):
 
 class SpecialPrediction(Base):
     __tablename__ = "special_predictions"
+    __table_args__ = (
+        UniqueConstraint("room_id", "user_id", name="uq_room_user_special"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
+    room_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("rooms.id", ondelete="CASCADE"), nullable=False
+    )
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
-        unique=True,
         nullable=False,
     )
     champion_team: Mapped[str | None] = mapped_column(String(100), nullable=True)

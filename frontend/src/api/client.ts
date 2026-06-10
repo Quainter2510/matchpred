@@ -70,8 +70,8 @@ client.interceptors.response.use(
       const publicPaths = [
         "/login",
         "/auth/callback",
+        "/telegram-auth",
         "/setup-profile",
-        "/tournament-join",
       ];
       if (!publicPaths.includes(window.location.pathname)) {
         window.location.href = "/login";

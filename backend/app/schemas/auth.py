@@ -23,12 +23,11 @@ class MeResponse(BaseModel):
     nickname: str
     avatar_url: str | None = None
     system_role: str
-    tournament_role: str | None = None
+    # Whether the user belongs to at least one room (drives onboarding routing).
+    has_rooms: bool = False
+    # Superadmin or admin of at least one room — may perform global match ops.
+    is_any_admin: bool = False
 
 
 class UpdateNicknameRequest(BaseModel):
     nickname: str = Field(min_length=3, max_length=24)
-
-
-class TournamentJoinRequest(BaseModel):
-    password: str = Field(min_length=1)

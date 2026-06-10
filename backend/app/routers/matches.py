@@ -1,13 +1,17 @@
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date as date_type, datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.dependencies import is_admin_or_super, require_admin, require_player
-from app.models import Match, Prediction, User
+from app.dependencies import (
+    RoomContext,
+    require_any_admin,
+    require_room_member,
+)
+from app.models import Match, Prediction, RoomMember, User
 from app.schemas.match import (
     MatchCreate,
     MatchDay,
@@ -20,15 +24,21 @@ from app.schemas.match import (
 from app.services import audit
 from app.services.recalc import score_match
 
-router = APIRouter(tags=["matches"])
+# Room-scoped match reads (attach the caller's prediction in this room).
+room_router = APIRouter(prefix="/rooms/{room_id}/matches", tags=["matches"])
+# Global match administration (results are shared across all rooms).
+admin_router = APIRouter(prefix="/matches", tags=["matches-admin"])
 
 
-async def _my_preds_map(db: AsyncSession, user_id: uuid.UUID, match_ids: list[uuid.UUID]) -> dict:
+async def _my_preds_map(
+    db: AsyncSession, room_id: uuid.UUID, user_id: uuid.UUID, match_ids: list[uuid.UUID]
+) -> dict:
     if not match_ids:
         return {}
     rows = (
         await db.execute(
             select(Prediction).where(
+                Prediction.room_id == room_id,
                 Prediction.user_id == user_id,
                 Prediction.match_id.in_(match_ids),
             )
@@ -49,24 +59,31 @@ def _to_out(match: Match, pred: Prediction | None) -> MatchOut:
     return out
 
 
-@router.get("/matches/days", response_model=list[MatchDay])
+@room_router.get("/days", response_model=list[MatchDay])
 async def match_days(
-    user: User = Depends(require_player), db: AsyncSession = Depends(get_db)
+    ctx: RoomContext = Depends(require_room_member),
+    db: AsyncSession = Depends(get_db),
 ):
-    counts = (
+    rows = (
         await db.execute(
-            select(Match.match_date, func.count(), func.min(Match.kickoff_at))
+            select(
+                Match.match_date,
+                func.count(),
+                func.min(Match.kickoff_at),
+            )
             .group_by(Match.match_date)
             .order_by(Match.match_date)
         )
     ).all()
-
     my = dict(
         (
             await db.execute(
                 select(Match.match_date, func.count())
                 .join(Prediction, Prediction.match_id == Match.id)
-                .where(Prediction.user_id == user.id)
+                .where(
+                    Prediction.user_id == ctx.user.id,
+                    Prediction.room_id == ctx.room.id,
+                )
                 .group_by(Match.match_date)
             )
         ).all()
@@ -76,16 +93,16 @@ async def match_days(
             date=d,
             match_count=c,
             my_predictions_count=my.get(d, 0),
-            first_kickoff_at=first_kickoff,
+            first_kickoff_at=first,
         )
-        for d, c, first_kickoff in counts
+        for d, c, first in rows
     ]
 
 
-@router.get("/matches", response_model=list[MatchOut])
+@room_router.get("", response_model=list[MatchOut])
 async def matches_by_date(
-    date: date,
-    user: User = Depends(require_player),
+    date: date_type,
+    ctx: RoomContext = Depends(require_room_member),
     db: AsyncSession = Depends(get_db),
 ):
     matches = (
@@ -93,27 +110,27 @@ async def matches_by_date(
             select(Match).where(Match.match_date == date).order_by(Match.kickoff_at)
         )
     ).scalars().all()
-    preds = await _my_preds_map(db, user.id, [m.id for m in matches])
+    preds = await _my_preds_map(db, ctx.room.id, ctx.user.id, [m.id for m in matches])
     return [_to_out(m, preds.get(m.id)) for m in matches]
 
 
-@router.get("/matches/{match_id}", response_model=MatchOut)
+@room_router.get("/{match_id}", response_model=MatchOut)
 async def match_detail(
     match_id: uuid.UUID,
-    user: User = Depends(require_player),
+    ctx: RoomContext = Depends(require_room_member),
     db: AsyncSession = Depends(get_db),
 ):
     match = await db.get(Match, match_id)
     if not match:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Match not found")
-    preds = await _my_preds_map(db, user.id, [match.id])
+    preds = await _my_preds_map(db, ctx.room.id, ctx.user.id, [match.id])
     return _to_out(match, preds.get(match.id))
 
 
-@router.get("/matches/{match_id}/predictions", response_model=list[PlayerPredictionOut])
+@room_router.get("/{match_id}/predictions", response_model=list[PlayerPredictionOut])
 async def match_predictions(
     match_id: uuid.UUID,
-    user: User = Depends(require_player),
+    ctx: RoomContext = Depends(require_room_member),
     db: AsyncSession = Depends(get_db),
 ):
     match = await db.get(Match, match_id)
@@ -121,7 +138,7 @@ async def match_predictions(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Match not found")
 
     now = datetime.now(timezone.utc)
-    if now < match.kickoff_at and not await is_admin_or_super(db, user):
+    if now < match.kickoff_at and not ctx.is_admin:
         raise HTTPException(
             status.HTTP_403_FORBIDDEN, "Predictions hidden until kickoff"
         )
@@ -130,7 +147,10 @@ async def match_predictions(
         await db.execute(
             select(Prediction, User)
             .join(User, User.id == Prediction.user_id)
-            .where(Prediction.match_id == match_id)
+            .where(
+                Prediction.match_id == match_id,
+                Prediction.room_id == ctx.room.id,
+            )
         )
     ).all()
     return [
@@ -147,11 +167,25 @@ async def match_predictions(
     ]
 
 
-# ---------------- Admin ----------------
-@router.post("/matches", response_model=MatchOut, status_code=201)
+# ---------------- Global admin (any room admin or superadmin) ----------------
+@admin_router.get("", response_model=list[MatchOut])
+async def admin_list_matches(
+    date: date_type | None = None,
+    user: User = Depends(require_any_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Global match list for the admin panel (no room context, no my_prediction)."""
+    stmt = select(Match).order_by(Match.kickoff_at)
+    if date is not None:
+        stmt = stmt.where(Match.match_date == date)
+    matches = (await db.execute(stmt)).scalars().all()
+    return [_to_out(m, None) for m in matches]
+
+
+@admin_router.post("", response_model=MatchOut, status_code=201)
 async def create_match(
     payload: MatchCreate,
-    user: User = Depends(require_admin),
+    user: User = Depends(require_any_admin),
     db: AsyncSession = Depends(get_db),
 ):
     match = Match(**payload.model_dump())
@@ -161,11 +195,11 @@ async def create_match(
     return _to_out(match, None)
 
 
-@router.patch("/matches/{match_id}", response_model=MatchOut)
+@admin_router.patch("/{match_id}", response_model=MatchOut)
 async def update_match(
     match_id: uuid.UUID,
     payload: MatchUpdate,
-    user: User = Depends(require_admin),
+    user: User = Depends(require_any_admin),
     db: AsyncSession = Depends(get_db),
 ):
     match = await db.get(Match, match_id)
@@ -178,11 +212,11 @@ async def update_match(
     return _to_out(match, None)
 
 
-@router.post("/matches/{match_id}/result", response_model=MatchOut)
+@admin_router.post("/{match_id}/result", response_model=MatchOut)
 async def set_result(
     match_id: uuid.UUID,
     payload: MatchResult,
-    user: User = Depends(require_admin),
+    user: User = Depends(require_any_admin),
     db: AsyncSession = Depends(get_db),
 ):
     match = await db.get(Match, match_id)
@@ -191,11 +225,11 @@ async def set_result(
 
     had_result = match.home_score_ft is not None and match.away_score_ft is not None
     prev = {"home": match.home_score_ft, "away": match.away_score_ft}
-
     match.home_score_ft = payload.home_score_ft
     match.away_score_ft = payload.away_score_ft
     match.status = "finished"
 
+    # Scores every room's predictions for this match (results are global).
     scored = await score_match(db, match)
     details = {
         "match": f"{match.home_team} — {match.away_team}",

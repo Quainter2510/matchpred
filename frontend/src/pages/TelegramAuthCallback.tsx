@@ -22,8 +22,6 @@ export default function TelegramAuthCallback() {
       setAccessToken(token);
       loadMe().then((me) => {
         if (!me?.nickname) navigate("/setup-profile", { replace: true });
-        else if (!me?.tournament_role && me?.system_role !== "superadmin")
-          navigate("/tournament-join", { replace: true });
         else navigate("/", { replace: true });
       });
       return;
@@ -52,8 +50,6 @@ export default function TelegramAuthCallback() {
       return loadMe().then((me) => {
         if (res.is_new_user || !me?.nickname)
           navigate("/setup-profile", { replace: true });
-        else if (!me?.tournament_role && me?.system_role !== "superadmin")
-          navigate("/tournament-join", { replace: true });
         else navigate("/", { replace: true });
       });
     }).catch(() => {

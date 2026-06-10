@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../store/auth";
 
 const nav = [
-  { to: "/", label: "Турнир", icon: "🏆" },
+  { to: "/", label: "Комнаты", icon: "🏆" },
   { to: "/profile", label: "Профиль", icon: "👤" },
 ];
 

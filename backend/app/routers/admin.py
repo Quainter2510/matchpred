@@ -10,25 +10,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.dependencies import require_admin, require_superadmin
-from app.models import (
-    AuditLog,
-    Match,
-    Tournament,
-    TournamentMember,
-    User,
-)
-from app.redis_client import invalidate_leaderboard_cache
-from app.schemas.admin import (
-    AuditLogOut,
-    MemberOut,
-    ParticipationUpdate,
-    PasswordUpdate,
-    RoleUpdate,
-    TransferRequest,
-)
+from app.dependencies import require_any_admin, require_superadmin
+from app.models import AuditLog, Match, User
+from app.schemas.admin import AuditLogOut, TransferRequest
 from app.schemas.special import ScorerResultRequest
-from app.security import hash_password
 from app.services import audit, football_api
 from app.services.recalc import recalculate_all, score_top_scorer
 
@@ -50,15 +35,19 @@ EVENT_LABELS_RU = {
     "champion_selected": "Выбран чемпион",
     "top_scorer_selected": "Выбран бомбардир",
     "tournament_password_changed": "Смена пароля турнира",
+    "room_created": "Создана комната",
+    "room_deleted": "Удалена комната",
+    "room_joined": "Вход в комнату",
+    "room_password_changed": "Смена пароля комнаты",
     "api_sync": "Синхронизация с API",
     "nickname_changed": "Смена никнейма",
 }
 
 
-# ---------------- Sync & recalc ----------------
+# ---------------- Sync & recalc (global; any room admin) ----------------
 @router.post("/admin/sync")
 async def sync_api(
-    user: User = Depends(require_admin), db: AsyncSession = Depends(get_db)
+    user: User = Depends(require_any_admin), db: AsyncSession = Depends(get_db)
 ):
     try:
         fixtures = await football_api.fetch_fixtures()
@@ -74,44 +63,16 @@ async def sync_api(
             existing.kickoff_at = fx["kickoff_at"]
             existing.match_date = fx["match_date"]
             existing.stage = fx["stage"]
-            existing.group_name = fx["group_name"]
+            existing.group_name = fx.get("group_name")
             existing.home_team = fx["home_team"]
             existing.away_team = fx["away_team"]
             existing.status = fx["status"]
             if fx["status"] == "finished":
-                prev_home, prev_away = existing.home_score_ft, existing.away_score_ft
                 existing.home_score_ft = fx["home_score_ft"]
                 existing.away_score_ft = fx["away_score_ft"]
-                await audit.log_match_result(
-                    db,
-                    match_id=existing.id,
-                    home_team=existing.home_team,
-                    away_team=existing.away_team,
-                    new_home=fx["home_score_ft"],
-                    new_away=fx["away_score_ft"],
-                    prev_home=prev_home,
-                    prev_away=prev_away,
-                    actor_id=user.id,
-                    actor_nickname=user.nickname,
-                )
             updated += 1
         else:
-            match = Match(**fx)
-            db.add(match)
-            if fx["status"] == "finished":
-                await db.flush()
-                await audit.log_match_result(
-                    db,
-                    match_id=match.id,
-                    home_team=match.home_team,
-                    away_team=match.away_team,
-                    new_home=fx["home_score_ft"],
-                    new_away=fx["away_score_ft"],
-                    prev_home=None,
-                    prev_away=None,
-                    actor_id=user.id,
-                    actor_nickname=user.nickname,
-                )
+            db.add(Match(**fx))
             created += 1
 
     await audit.log_event(
@@ -122,7 +83,6 @@ async def sync_api(
         details={"created": created, "updated": updated},
     )
     await db.commit()
-    # Recalculate after a sync may have brought finished results.
     summary = await recalculate_all(db)
     await db.commit()
     return {"created": created, "updated": updated, **summary}
@@ -130,7 +90,7 @@ async def sync_api(
 
 @router.post("/admin/recalculate")
 async def recalculate(
-    user: User = Depends(require_admin), db: AsyncSession = Depends(get_db)
+    user: User = Depends(require_any_admin), db: AsyncSession = Depends(get_db)
 ):
     summary = await recalculate_all(db)
     await audit.log_event(
@@ -147,7 +107,7 @@ async def recalculate(
 @router.post("/admin/scorer-result")
 async def scorer_result(
     payload: ScorerResultRequest,
-    user: User = Depends(require_admin),
+    user: User = Depends(require_any_admin),
     db: AsyncSession = Depends(get_db),
 ):
     awarded = await score_top_scorer(db, payload.player_api_id)
@@ -156,117 +116,14 @@ async def scorer_result(
         "scorer_result_set",
         actor_id=user.id,
         actor_nickname=user.nickname,
-        details={"player_api_id": payload.player_api_id, "player_name": payload.player_name, "awarded": awarded},
+        details={
+            "player_api_id": payload.player_api_id,
+            "player_name": payload.player_name,
+            "awarded": awarded,
+        },
     )
     await db.commit()
     return {"awarded": awarded}
-
-
-# ---------------- Members ----------------
-@router.get("/admin/members", response_model=list[MemberOut])
-async def members(
-    user: User = Depends(require_admin), db: AsyncSession = Depends(get_db)
-):
-    rows = (
-        await db.execute(
-            select(TournamentMember, User).join(User, User.id == TournamentMember.user_id)
-        )
-    ).all()
-    return [
-        MemberOut(
-            user_id=u.id,
-            nickname=u.nickname,
-            avatar_url=u.avatar_url,
-            system_role=u.system_role,
-            tournament_role=m.tournament_role,
-            total_points=m.total_points,
-            exact_scores_count=m.exact_scores_count,
-            participation_confirmed=m.participation_confirmed,
-        )
-        for m, u in rows
-    ]
-
-
-@router.patch("/admin/members/{uid}/role")
-async def change_role(
-    uid: uuid.UUID,
-    payload: RoleUpdate,
-    user: User = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
-):
-    member = await db.get(TournamentMember, uid)
-    if not member:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Member not found")
-    member.tournament_role = payload.role
-    await audit.log_event(
-        db,
-        "role_changed",
-        actor_id=user.id,
-        actor_nickname=user.nickname,
-        target_id=uid,
-        details={"role": payload.role},
-    )
-    await db.commit()
-    return {"ok": True}
-
-
-@router.patch("/admin/members/{uid}/participation")
-async def set_participation(
-    uid: uuid.UUID,
-    payload: ParticipationUpdate,
-    user: User = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
-):
-    member = await db.get(TournamentMember, uid)
-    if not member:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Member not found")
-    member.participation_confirmed = payload.confirmed
-    await db.commit()
-    await invalidate_leaderboard_cache()
-    return {"ok": True}
-
-
-@router.delete("/admin/members/{uid}")
-async def remove_member(
-    uid: uuid.UUID,
-    user: User = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
-):
-    member = await db.get(TournamentMember, uid)
-    if not member:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Member not found")
-    await db.delete(member)
-    await audit.log_event(
-        db,
-        "member_removed",
-        actor_id=user.id,
-        actor_nickname=user.nickname,
-        target_id=uid,
-    )
-    await db.commit()
-    await invalidate_leaderboard_cache()
-    return {"ok": True}
-
-
-# ---------------- Tournament password ----------------
-@router.patch("/tournament/password")
-async def change_password(
-    payload: PasswordUpdate,
-    user: User = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
-):
-    tournament = await db.scalar(select(Tournament).limit(1))
-    if not tournament:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Tournament not configured")
-    tournament.password_hash = hash_password(payload.new_password)
-    await audit.log_event(
-        db,
-        "tournament_password_changed",
-        actor_id=user.id,
-        actor_nickname=user.nickname,
-    )
-    await db.commit()
-    return {"ok": True}
 
 
 # ---------------- Superadmin ----------------
@@ -332,9 +189,7 @@ async def export_audit_log(
 
     buf = io.StringIO()
     writer = csv.writer(buf, delimiter=";")
-    writer.writerow(
-        ["Время (UTC)", "Инициатор", "Событие", "Код", "Объект", "Детали"]
-    )
+    writer.writerow(["Время (UTC)", "Инициатор", "Событие", "Код", "Объект", "Детали"])
     for r in rows:
         writer.writerow(
             [

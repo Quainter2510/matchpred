@@ -9,14 +9,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
-from app.dependencies import get_current_user, get_membership
-from app.models import OAuthAccount, TournamentMember, User
+from app.dependencies import get_current_user, is_any_admin
+from app.models import OAuthAccount, RoomMember, User
 from app.redis_client import redis_client
 from app.schemas.auth import (
     MeResponse,
     TelegramVerifyRequest,
     TokenResponse,
-    TournamentJoinRequest,
     UpdateNicknameRequest,
 )
 from app.security import (
@@ -24,7 +23,6 @@ from app.security import (
     create_refresh_token,
     decode_token,
     encrypt_token,
-    verify_password,
 )
 from app.services import audit
 from app.services.oauth import telegram, yandex
@@ -48,14 +46,26 @@ def _set_refresh_cookie(response: Response, user_id: uuid.UUID) -> None:
     )
 
 
-async def _tournament_role(db: AsyncSession, user_id: uuid.UUID) -> str | None:
-    member = await get_membership(db, user_id)
-    return member.tournament_role if member else None
+async def _has_rooms(db: AsyncSession, user_id: uuid.UUID) -> bool:
+    found = await db.scalar(
+        select(RoomMember.room_id).where(RoomMember.user_id == user_id).limit(1)
+    )
+    return found is not None
 
 
 async def _issue_access(db: AsyncSession, user: User) -> str:
-    role = await _tournament_role(db, user.id)
-    return create_access_token(str(user.id), user.nickname, user.system_role, role)
+    return create_access_token(str(user.id), user.nickname, user.system_role)
+
+
+def _me(user: User, has_rooms: bool, is_any_admin: bool) -> MeResponse:
+    return MeResponse(
+        id=user.id,
+        nickname=user.nickname,
+        avatar_url=user.avatar_url,
+        system_role=user.system_role,
+        has_rooms=has_rooms,
+        is_any_admin=is_any_admin,
+    )
 
 
 async def _generate_nickname(db: AsyncSession, base: str) -> str:
@@ -123,9 +133,6 @@ async def _upsert_oauth_user(
         details={"provider": provider},
     )
     if system_role == "superadmin":
-        # The superadmin joins the tournament without a password — give them an
-        # admin membership immediately so they appear in leaderboard/members.
-        db.add(TournamentMember(user_id=user.id, tournament_role="admin"))
         await audit.log_event(
             db,
             "superadmin_assigned",
@@ -300,14 +307,7 @@ async def me(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    role = await _tournament_role(db, user.id)
-    return MeResponse(
-        id=user.id,
-        nickname=user.nickname,
-        avatar_url=user.avatar_url,
-        system_role=user.system_role,
-        tournament_role=role,
-    )
+    return _me(user, await _has_rooms(db, user.id), await is_any_admin(db, user))
 
 
 @router.patch("/me", response_model=MeResponse)
@@ -335,43 +335,4 @@ async def update_me(
         details={"from": old, "to": nick},
     )
     await db.commit()
-    role = await _tournament_role(db, user.id)
-    return MeResponse(
-        id=user.id,
-        nickname=user.nickname,
-        avatar_url=user.avatar_url,
-        system_role=user.system_role,
-        tournament_role=role,
-    )
-
-
-@router.post("/tournament-join", response_model=MeResponse)
-async def tournament_join(
-    payload: TournamentJoinRequest,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    from app.models import Tournament
-
-    # Superadmin joins without a password.
-    if user.system_role != "superadmin":
-        tournament = await db.scalar(select(Tournament).limit(1))
-        if not tournament:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Tournament not configured")
-        if not verify_password(payload.password, tournament.password_hash):
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Wrong password")
-
-    existing = await get_membership(db, user.id)
-    if not existing:
-        role = "admin" if user.system_role == "superadmin" else "player"
-        db.add(TournamentMember(user_id=user.id, tournament_role=role))
-        await db.commit()
-
-    role = await _tournament_role(db, user.id)
-    return MeResponse(
-        id=user.id,
-        nickname=user.nickname,
-        avatar_url=user.avatar_url,
-        system_role=user.system_role,
-        tournament_role=role,
-    )
+    return _me(user, await _has_rooms(db, user.id), await is_any_admin(db, user))

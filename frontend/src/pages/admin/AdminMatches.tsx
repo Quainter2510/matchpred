@@ -50,7 +50,7 @@ export default function AdminMatches() {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const matches = useQuery({
     queryKey: ["admin-matches", date],
-    queryFn: () => api.matchesByDate(date),
+    queryFn: () => api.adminMatchesByDate(date),
   });
   const sync = useMutation({
     mutationFn: api.sync,

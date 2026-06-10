@@ -1,30 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, Field
-
-
-class MemberOut(BaseModel):
-    user_id: uuid.UUID
-    nickname: str
-    avatar_url: str | None = None
-    system_role: str
-    tournament_role: str
-    total_points: int
-    exact_scores_count: int
-    participation_confirmed: bool = False
-
-
-class RoleUpdate(BaseModel):
-    role: str = Field(pattern="^(admin|player)$")
-
-
-class ParticipationUpdate(BaseModel):
-    confirmed: bool
-
-
-class PasswordUpdate(BaseModel):
-    new_password: str = Field(min_length=4, max_length=128)
+from pydantic import BaseModel
 
 
 class TransferRequest(BaseModel):

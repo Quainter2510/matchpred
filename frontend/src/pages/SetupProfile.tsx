@@ -19,8 +19,7 @@ export default function SetupProfile() {
     try {
       const me = await api.updateNickname(nickname);
       setUser(me);
-      if (me.system_role === "superadmin") navigate("/");
-      else navigate("/tournament-join");
+      navigate("/");
     } catch (err: any) {
       setError(err.response?.data?.detail || "Не удалось сохранить никнейм");
     }

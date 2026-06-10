@@ -20,6 +20,10 @@ EVENT_TYPES = {
     "champion_selected",
     "top_scorer_selected",
     "tournament_password_changed",
+    "room_created",
+    "room_deleted",
+    "room_joined",
+    "room_password_changed",
     "api_sync",
     "nickname_changed",
 }

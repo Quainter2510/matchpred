@@ -5,27 +5,32 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.dependencies import require_player
-from app.models import SpecialPrediction, TournamentMember, User
+from app.dependencies import RoomContext, require_room_member
+from app.models import RoomMember, SpecialPrediction, User
 from app.redis_client import (
-    LEADERBOARD_CACHE_KEY,
     LEADERBOARD_CACHE_TTL,
+    leaderboard_cache_key,
     redis_client,
 )
 from app.schemas.leaderboard import LeaderboardEntry, MyLeaderboardEntry
 
-router = APIRouter(prefix="/leaderboard", tags=["leaderboard"])
+router = APIRouter(prefix="/rooms/{room_id}/leaderboard", tags=["leaderboard"])
 
 
-async def _compute(db: AsyncSession) -> list[dict]:
+async def _compute(db: AsyncSession, room_id) -> list[dict]:
     rows = (
         await db.execute(
-            select(TournamentMember, User, SpecialPrediction)
-            .join(User, User.id == TournamentMember.user_id)
-            .outerjoin(SpecialPrediction, SpecialPrediction.user_id == User.id)
+            select(RoomMember, User, SpecialPrediction)
+            .join(User, User.id == RoomMember.user_id)
+            .outerjoin(
+                SpecialPrediction,
+                (SpecialPrediction.user_id == User.id)
+                & (SpecialPrediction.room_id == room_id),
+            )
+            .where(RoomMember.room_id == room_id)
             .order_by(
-                TournamentMember.total_points.desc(),
-                TournamentMember.exact_scores_count.desc(),
+                RoomMember.total_points.desc(),
+                RoomMember.exact_scores_count.desc(),
                 User.nickname.asc(),
             )
         )
@@ -50,18 +55,17 @@ async def _compute(db: AsyncSession) -> list[dict]:
     return entries
 
 
-async def _get_leaderboard(db: AsyncSession) -> list[dict]:
+async def _get_leaderboard(db: AsyncSession, room_id) -> list[dict]:
+    key = leaderboard_cache_key(room_id)
     try:
-        cached = await redis_client.get(LEADERBOARD_CACHE_KEY)
+        cached = await redis_client.get(key)
         if cached:
             return json.loads(cached)
     except Exception:
         pass
-    entries = await _compute(db)
+    entries = await _compute(db, room_id)
     try:
-        await redis_client.setex(
-            LEADERBOARD_CACHE_KEY, LEADERBOARD_CACHE_TTL, json.dumps(entries)
-        )
+        await redis_client.setex(key, LEADERBOARD_CACHE_TTL, json.dumps(entries))
     except Exception:
         pass
     return entries
@@ -69,17 +73,19 @@ async def _get_leaderboard(db: AsyncSession) -> list[dict]:
 
 @router.get("", response_model=list[LeaderboardEntry])
 async def leaderboard(
-    user: User = Depends(require_player), db: AsyncSession = Depends(get_db)
+    ctx: RoomContext = Depends(require_room_member),
+    db: AsyncSession = Depends(get_db),
 ):
-    return await _get_leaderboard(db)
+    return await _get_leaderboard(db, ctx.room.id)
 
 
 @router.get("/me", response_model=MyLeaderboardEntry | None)
 async def leaderboard_me(
-    user: User = Depends(require_player), db: AsyncSession = Depends(get_db)
+    ctx: RoomContext = Depends(require_room_member),
+    db: AsyncSession = Depends(get_db),
 ):
-    entries = await _get_leaderboard(db)
+    entries = await _get_leaderboard(db, ctx.room.id)
     for e in entries:
-        if e["user_id"] == str(user.id):
+        if e["user_id"] == str(ctx.user.id):
             return e
     return None

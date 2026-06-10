@@ -18,9 +18,7 @@ export default function AuthCallback() {
     }
     setAccessToken(token);
     loadMe().then((me) => {
-      if (isNew) navigate("/setup-profile");
-      else if (!me?.tournament_role && me?.system_role !== "superadmin")
-        navigate("/tournament-join");
+      if (isNew || !me?.nickname) navigate("/setup-profile");
       else navigate("/");
     });
   }, [loadMe, navigate]);

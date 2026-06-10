@@ -11,13 +11,12 @@ Scoring table:
 """
 from __future__ import annotations
 
+# Canonical default point values. Each room may override the exact/diff/outcome
+# values (and champion/scorer points) — see app.models.room.Room.
 POINTS_EXACT = 5
 POINTS_DIFF = 2
 POINTS_OUTCOME = 1
 POINTS_MISS = 0
-
-POINTS_CHAMPION = 10
-POINTS_TOP_SCORER = 10
 
 
 def _sign(value: int) -> int:
@@ -33,15 +32,22 @@ def score_prediction(
     predicted_away: int,
     actual_home: int,
     actual_away: int,
+    *,
+    points_exact: int = POINTS_EXACT,
+    points_diff: int = POINTS_DIFF,
+    points_outcome: int = POINTS_OUTCOME,
 ) -> tuple[int, bool]:
     """Return (points, is_exact) for a single match prediction.
+
+    Point values default to the canonical 5 / 2 / 1 but may be overridden per
+    room. Misses always score 0.
 
     >>> score_prediction(2, 1, 2, 1)
     (5, True)
     """
     is_exact = predicted_home == actual_home and predicted_away == actual_away
     if is_exact:
-        return POINTS_EXACT, True
+        return points_exact, True
 
     pred_diff = predicted_home - predicted_away
     actual_diff = actual_home - actual_away
@@ -49,11 +55,11 @@ def score_prediction(
     # Goal difference: same difference AND same winner (sign matches implicitly
     # when the diffs are equal and non-zero; for a 0 diff that means a draw).
     if pred_diff == actual_diff:
-        return POINTS_DIFF, False
+        return points_diff, False
 
     # Outcome: the sign of the result matches (win/draw/loss).
     if _sign(pred_diff) == _sign(actual_diff):
-        return POINTS_OUTCOME, False
+        return points_outcome, False
 
     return POINTS_MISS, False
 

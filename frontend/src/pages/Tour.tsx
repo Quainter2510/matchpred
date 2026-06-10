@@ -5,17 +5,17 @@ import MatchCard from "../components/MatchCard";
 import { formatDate } from "../utils/dates";
 
 export default function Tour() {
-  const { date } = useParams<{ date: string }>();
+  const { roomId, date } = useParams<{ roomId: string; date: string }>();
   const { data, isLoading } = useQuery({
-    queryKey: ["matches", date],
-    queryFn: () => api.matchesByDate(date!),
-    enabled: !!date,
+    queryKey: ["matches", roomId, date],
+    queryFn: () => api.matchesByDate(roomId!, date!),
+    enabled: !!roomId && !!date,
   });
 
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <Link to="/" className="btn-ghost">
+        <Link to={`/room/${roomId}`} className="btn-ghost">
           ← Назад
         </Link>
         <h1 className="text-2xl font-bold">{date && formatDate(date)}</h1>
@@ -27,7 +27,7 @@ export default function Tour() {
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
           {data.map((m) => (
-            <MatchCard key={m.id} match={m} />
+            <MatchCard key={m.id} match={m} roomId={roomId!} />
           ))}
         </div>
       )}

@@ -1,13 +1,13 @@
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date as date_type, datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.dependencies import require_player
-from app.models import Match, Prediction, User
+from app.dependencies import RoomContext, require_room_member
+from app.models import Match, Prediction
 from app.schemas.prediction import (
     MyPredictionOut,
     PredictionBatchRequest,
@@ -17,15 +17,19 @@ from app.schemas.prediction import (
 )
 from app.services import audit
 
-router = APIRouter(prefix="/predictions", tags=["predictions"])
+router = APIRouter(prefix="/rooms/{room_id}/predictions", tags=["predictions"])
 
 
 @router.post("/batch", response_model=PredictionBatchResponse)
 async def batch(
     payload: PredictionBatchRequest,
-    user: User = Depends(require_player),
+    ctx: RoomContext = Depends(require_room_member),
     db: AsyncSession = Depends(get_db),
 ):
+    if not ctx.room.is_active:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Room is archived")
+    room_id = ctx.room.id
+    user = ctx.user
     now = datetime.now(timezone.utc)
     match_ids = [p.match_id for p in payload.predictions]
     matches = {
@@ -39,6 +43,7 @@ async def batch(
         for p in (
             await db.execute(
                 select(Prediction).where(
+                    Prediction.room_id == room_id,
                     Prediction.user_id == user.id,
                     Prediction.match_id.in_(match_ids),
                 )
@@ -60,10 +65,7 @@ async def batch(
         pred = existing.get(item.match_id)
         match_label = f"{match.home_team} — {match.away_team}"
         if pred:
-            changed = (
-                pred.predicted_home != item.home
-                or pred.predicted_away != item.away
-            )
+            changed = pred.predicted_home != item.home or pred.predicted_away != item.away
             if changed:
                 await audit.log_event(
                     db,
@@ -72,13 +74,11 @@ async def batch(
                     actor_nickname=user.nickname,
                     target_id=match.id,
                     details={
+                        "room_id": str(room_id),
                         "match": match_label,
                         "home": item.home,
                         "away": item.away,
-                        "previous": {
-                            "home": pred.predicted_home,
-                            "away": pred.predicted_away,
-                        },
+                        "previous": {"home": pred.predicted_home, "away": pred.predicted_away},
                     },
                 )
             pred.predicted_home = item.home
@@ -86,6 +86,7 @@ async def batch(
         else:
             db.add(
                 Prediction(
+                    room_id=room_id,
                     user_id=user.id,
                     match_id=item.match_id,
                     predicted_home=item.home,
@@ -98,7 +99,7 @@ async def batch(
                 actor_id=user.id,
                 actor_nickname=user.nickname,
                 target_id=match.id,
-                details={"match": match_label, "home": item.home, "away": item.away},
+                details={"room_id": str(room_id), "match": match_label, "home": item.home, "away": item.away},
             )
         results.append(PredictionResult(match_id=item.match_id, accepted=True))
 
@@ -108,10 +109,16 @@ async def batch(
 
 @router.get("/my", response_model=list[MyPredictionOut])
 async def my_predictions(
-    user: User = Depends(require_player), db: AsyncSession = Depends(get_db)
+    ctx: RoomContext = Depends(require_room_member),
+    db: AsyncSession = Depends(get_db),
 ):
     rows = (
-        await db.execute(select(Prediction).where(Prediction.user_id == user.id))
+        await db.execute(
+            select(Prediction).where(
+                Prediction.room_id == ctx.room.id,
+                Prediction.user_id == ctx.user.id,
+            )
+        )
     ).scalars().all()
     return [
         MyPredictionOut(
@@ -127,15 +134,19 @@ async def my_predictions(
 
 @router.get("/tour/{tour_date}", response_model=TourPointsOut)
 async def tour_points(
-    tour_date: date,
-    user: User = Depends(require_player),
+    tour_date: date_type,
+    ctx: RoomContext = Depends(require_room_member),
     db: AsyncSession = Depends(get_db),
 ):
     rows = (
         await db.execute(
             select(Prediction)
             .join(Match, Match.id == Prediction.match_id)
-            .where(Prediction.user_id == user.id, Match.match_date == tour_date)
+            .where(
+                Prediction.room_id == ctx.room.id,
+                Prediction.user_id == ctx.user.id,
+                Match.match_date == tour_date,
+            )
         )
     ).scalars().all()
     points = sum(p.points_awarded or 0 for p in rows)

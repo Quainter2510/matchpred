@@ -9,7 +9,15 @@ from slowapi.middleware import SlowAPIMiddleware
 from slowapi.util import get_remote_address
 
 from app.config import settings
-from app.routers import admin, auth, leaderboard, matches, predictions, special
+from app.routers import (
+    admin,
+    auth,
+    leaderboard,
+    matches,
+    predictions,
+    rooms,
+    special,
+)
 from app.services.scheduler import start_scheduler, stop_scheduler
 
 # Global default rate limit (per IP). Auth/predictions are the sensitive paths;
@@ -43,8 +51,15 @@ app.add_middleware(
 )
 
 API_V1 = "/api/v1"
-for r in (auth, matches, predictions, special, leaderboard, admin):
-    app.include_router(r.router, prefix=API_V1)
+app.include_router(auth.router, prefix=API_V1)
+app.include_router(rooms.router, prefix=API_V1)
+app.include_router(matches.room_router, prefix=API_V1)
+app.include_router(matches.admin_router, prefix=API_V1)
+app.include_router(predictions.router, prefix=API_V1)
+app.include_router(special.router, prefix=API_V1)
+app.include_router(special.players_router, prefix=API_V1)
+app.include_router(leaderboard.router, prefix=API_V1)
+app.include_router(admin.router, prefix=API_V1)
 
 
 @app.get("/health")

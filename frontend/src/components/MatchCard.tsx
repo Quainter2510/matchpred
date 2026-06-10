@@ -1,29 +1,34 @@
 import { Link } from "react-router-dom";
 import { Match } from "../api/endpoints";
 import { formatTime, isPast } from "../utils/dates";
-import { formatStage } from "../utils/stage";
 import Countdown from "./Countdown";
-import TeamName from "./TeamName";
 
-export default function MatchCard({ match }: { match: Match }) {
+export default function MatchCard({ match, roomId }: { match: Match; roomId: string }) {
   const started = isPast(match.kickoff_at);
   const finished = match.status === "finished";
   const p = match.my_prediction;
+  const stageLabel = match.group_name
+    ? `Группа ${match.group_name}`
+    : match.stage.replace(/_/g, " ");
 
   return (
     <div className="card flex flex-col gap-2">
       <div className="flex items-center justify-between text-xs text-slate-500">
-        <span>{formatTime(match.kickoff_at)} · {formatStage(match.stage, match.group_name)}</span>
-        {!started ? <Countdown to={match.kickoff_at} /> : <span>{finished ? "Завершён" : "Идёт/закрыт"}</span>}
+        <span>
+          {formatTime(match.kickoff_at)} · {stageLabel}
+        </span>
+        {!started ? (
+          <Countdown to={match.kickoff_at} />
+        ) : (
+          <span>{finished ? "Завершён" : "Идёт/закрыт"}</span>
+        )}
       </div>
       <div className="grid grid-cols-3 items-center gap-2">
-        <TeamName team={match.home_team} flagSide="right" className="justify-end text-right font-medium" />
+        <div className="text-right font-medium">{match.home_team}</div>
         <div className="text-center text-xl font-bold">
-          {finished
-            ? `${match.home_score_ft} : ${match.away_score_ft}`
-            : "vs"}
+          {finished ? `${match.home_score_ft} : ${match.away_score_ft}` : "vs"}
         </div>
-        <TeamName team={match.away_team} className="justify-start text-left font-medium" />
+        <div className="text-left font-medium">{match.away_team}</div>
       </div>
 
       {p && (
@@ -39,11 +44,11 @@ export default function MatchCard({ match }: { match: Match }) {
 
       <div className="flex gap-2">
         {!started ? (
-          <Link to={`/match/${match.id}/predict`} className="btn-primary flex-1">
+          <Link to={`/room/${roomId}/match/${match.id}/predict`} className="btn-primary flex-1">
             {p ? "Изменить прогноз" : "Сделать прогноз"}
           </Link>
         ) : (
-          <Link to={`/match/${match.id}/predictions`} className="btn-ghost flex-1">
+          <Link to={`/room/${roomId}/match/${match.id}/predictions`} className="btn-ghost flex-1">
             Прогнозы участников
           </Link>
         )}

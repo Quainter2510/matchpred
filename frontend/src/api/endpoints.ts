@@ -5,7 +5,32 @@ export interface Me {
   nickname: string;
   avatar_url: string | null;
   system_role: "superadmin" | "user";
-  tournament_role: "admin" | "player" | null;
+  has_rooms: boolean;
+  is_any_admin: boolean;
+}
+
+export interface Room {
+  id: string;
+  name: string;
+  member_count: number;
+  is_member: boolean;
+  is_active: boolean;
+  my_role: "admin" | "player" | null;
+}
+
+export interface RoomScoring {
+  points_exact: number;
+  points_diff: number;
+  points_outcome: number;
+  points_champion: number;
+  points_scorer: number;
+}
+
+export interface RoomDetail extends Room {
+  first_match_at: string;
+  total_points: number | null;
+  place: number | null;
+  scoring: RoomScoring | null;
 }
 
 export interface MatchDay {
@@ -70,12 +95,12 @@ export interface SpecialPrediction {
   locked: boolean;
 }
 
-export interface Member {
+export interface RoomMember {
   user_id: string;
   nickname: string;
   avatar_url: string | null;
   system_role: string;
-  tournament_role: string;
+  room_role: string;
   total_points: number;
   exact_scores_count: number;
   participation_confirmed: boolean;
@@ -91,82 +116,123 @@ export interface AuditEntry {
   details: Record<string, unknown> | null;
 }
 
+const r = (roomId: string) => `/rooms/${roomId}`;
+
 export const api = {
-  // auth
-  me: () => client.get<Me>("/auth/me").then((r) => r.data),
+  // ---- auth ----
+  me: () => client.get<Me>("/auth/me").then((x) => x.data),
   updateNickname: (nickname: string) =>
-    client.patch<Me>("/auth/me", { nickname }).then((r) => r.data),
-  tournamentJoin: (password: string) =>
-    client.post<Me>("/auth/tournament-join", { password }).then((r) => r.data),
+    client.patch<Me>("/auth/me", { nickname }).then((x) => x.data),
   telegramVerify: (data: Record<string, unknown>) =>
-    client.post<{ access_token: string; is_new_user: boolean }>(
-      "/auth/telegram/verify",
-      data
-    ).then((r) => r.data),
+    client
+      .post<{ access_token: string; is_new_user: boolean }>(
+        "/auth/telegram/verify",
+        data
+      )
+      .then((x) => x.data),
   logout: () => client.post("/auth/logout"),
   yandexLoginUrl: () => `${API_BASE}/auth/yandex/login`,
 
-  // matches
-  matchDays: () => client.get<MatchDay[]>("/matches/days").then((r) => r.data),
-  matchesByDate: (date: string) =>
-    client.get<Match[]>("/matches", { params: { date } }).then((r) => r.data),
-  match: (id: string) => client.get<Match>(`/matches/${id}`).then((r) => r.data),
-  matchPredictions: (id: string) =>
-    client.get<PlayerPrediction[]>(`/matches/${id}/predictions`).then((r) => r.data),
-  createMatch: (body: unknown) => client.post("/matches", body).then((r) => r.data),
-  updateMatch: (id: string, body: unknown) =>
-    client.patch(`/matches/${id}`, body).then((r) => r.data),
-  setResult: (id: string, home: number, away: number) =>
-    client.post(`/matches/${id}/result`, {
-      home_score_ft: home,
-      away_score_ft: away,
-    }).then((r) => r.data),
-
-  // predictions
-  batchPredict: (
-    predictions: { match_id: string; home: number; away: number }[]
-  ) => client.post("/predictions/batch", { predictions }).then((r) => r.data),
-
-  // special
-  mySpecial: () =>
-    client.get<SpecialPrediction>("/special-prediction/my").then((r) => r.data),
-  updateSpecial: (body: {
-    champion_team: string | null;
-    top_scorer_name: string | null;
-    top_scorer_api_id: number | null;
-  }) => client.put<SpecialPrediction>("/special-prediction", body).then((r) => r.data),
-  allSpecial: () => client.get("/special-prediction/all").then((r) => r.data),
-  searchPlayers: (q: string) =>
-    client.get("/players/search", { params: { q } }).then((r) => r.data),
-
-  // leaderboard
-  leaderboard: () =>
-    client.get<LeaderboardEntry[]>("/leaderboard").then((r) => r.data),
-  leaderboardMe: () =>
-    client.get<LeaderboardEntry | null>("/leaderboard/me").then((r) => r.data),
-
-  // admin
-  members: () => client.get<Member[]>("/admin/members").then((r) => r.data),
-  changeRole: (uid: string, role: string) =>
-    client.patch(`/admin/members/${uid}/role`, { role }).then((r) => r.data),
-  setParticipation: (uid: string, confirmed: boolean) =>
+  // ---- rooms ----
+  listRooms: (q?: string) =>
+    client.get<Room[]>("/rooms", { params: q ? { q } : {} }).then((x) => x.data),
+  myRooms: () => client.get<Room[]>("/rooms/my").then((x) => x.data),
+  createRoom: (name: string, password: string, first_match_at?: string) =>
     client
-      .patch(`/admin/members/${uid}/participation`, { confirmed })
-      .then((r) => r.data),
-  removeMember: (uid: string) =>
-    client.delete(`/admin/members/${uid}`).then((r) => r.data),
-  changePassword: (new_password: string) =>
-    client.patch("/tournament/password", { new_password }).then((r) => r.data),
-  sync: () => client.post("/admin/sync").then((r) => r.data),
-  recalculate: () => client.post("/admin/recalculate").then((r) => r.data),
+      .post<RoomDetail>("/rooms", { name, password, first_match_at })
+      .then((x) => x.data),
+  joinRoom: (roomId: string, password: string) =>
+    client.post<Room>(`${r(roomId)}/join`, { password }).then((x) => x.data),
+  roomDetail: (roomId: string) =>
+    client.get<RoomDetail>(r(roomId)).then((x) => x.data),
+  deleteRoom: (roomId: string) => client.delete(r(roomId)).then((x) => x.data),
+  archiveRoom: (roomId: string, archived: boolean) =>
+    client.patch(`${r(roomId)}/archive`, { archived }).then((x) => x.data),
+  updateRoomRules: (roomId: string, scoring: RoomScoring) =>
+    client.patch<RoomScoring>(`${r(roomId)}/rules`, scoring).then((x) => x.data),
+
+  // room members (room admin)
+  roomMembers: (roomId: string) =>
+    client.get<RoomMember[]>(`${r(roomId)}/members`).then((x) => x.data),
+  changeRole: (roomId: string, uid: string, role: string) =>
+    client.patch(`${r(roomId)}/members/${uid}/role`, { role }).then((x) => x.data),
+  setParticipation: (roomId: string, uid: string, confirmed: boolean) =>
+    client
+      .patch(`${r(roomId)}/members/${uid}/participation`, { confirmed })
+      .then((x) => x.data),
+  removeMember: (roomId: string, uid: string) =>
+    client.delete(`${r(roomId)}/members/${uid}`).then((x) => x.data),
+  changeRoomPassword: (roomId: string, new_password: string) =>
+    client.patch(`${r(roomId)}/password`, { new_password }).then((x) => x.data),
+
+  // ---- matches (room-scoped reads) ----
+  matchDays: (roomId: string) =>
+    client.get<MatchDay[]>(`${r(roomId)}/matches/days`).then((x) => x.data),
+  matchesByDate: (roomId: string, date: string) =>
+    client
+      .get<Match[]>(`${r(roomId)}/matches`, { params: { date } })
+      .then((x) => x.data),
+  match: (roomId: string, id: string) =>
+    client.get<Match>(`${r(roomId)}/matches/${id}`).then((x) => x.data),
+  matchPredictions: (roomId: string, id: string) =>
+    client
+      .get<PlayerPrediction[]>(`${r(roomId)}/matches/${id}/predictions`)
+      .then((x) => x.data),
+
+  // ---- matches (global admin) ----
+  adminMatchesByDate: (date: string) =>
+    client.get<Match[]>("/matches", { params: { date } }).then((x) => x.data),
+  createMatch: (body: unknown) => client.post("/matches", body).then((x) => x.data),
+  updateMatch: (id: string, body: unknown) =>
+    client.patch(`/matches/${id}`, body).then((x) => x.data),
+  setResult: (id: string, home: number, away: number) =>
+    client
+      .post(`/matches/${id}/result`, { home_score_ft: home, away_score_ft: away })
+      .then((x) => x.data),
+
+  // ---- predictions (room-scoped) ----
+  batchPredict: (
+    roomId: string,
+    predictions: { match_id: string; home: number; away: number }[]
+  ) =>
+    client.post(`${r(roomId)}/predictions/batch`, { predictions }).then((x) => x.data),
+
+  // ---- special (room-scoped) ----
+  mySpecial: (roomId: string) =>
+    client.get<SpecialPrediction>(`${r(roomId)}/special-prediction/my`).then((x) => x.data),
+  updateSpecial: (
+    roomId: string,
+    body: {
+      champion_team: string | null;
+      top_scorer_name: string | null;
+      top_scorer_api_id: number | null;
+    }
+  ) =>
+    client
+      .put<SpecialPrediction>(`${r(roomId)}/special-prediction`, body)
+      .then((x) => x.data),
+  allSpecial: (roomId: string) =>
+    client.get(`${r(roomId)}/special-prediction/all`).then((x) => x.data),
+  searchPlayers: (q: string) =>
+    client.get("/players/search", { params: { q } }).then((x) => x.data),
+
+  // ---- leaderboard (room-scoped) ----
+  leaderboard: (roomId: string) =>
+    client.get<LeaderboardEntry[]>(`${r(roomId)}/leaderboard`).then((x) => x.data),
+  leaderboardMe: (roomId: string) =>
+    client.get<LeaderboardEntry | null>(`${r(roomId)}/leaderboard/me`).then((x) => x.data),
+
+  // ---- global admin ----
+  sync: () => client.post("/admin/sync").then((x) => x.data),
+  recalculate: () => client.post("/admin/recalculate").then((x) => x.data),
   scorerResult: (player_api_id: number, player_name: string) =>
-    client.post("/admin/scorer-result", { player_api_id, player_name }).then((r) => r.data),
+    client.post("/admin/scorer-result", { player_api_id, player_name }).then((x) => x.data),
   transferSuperadmin: (target_user_id: string) =>
-    client.post("/admin/superadmin/transfer", { target_user_id }).then((r) => r.data),
+    client.post("/admin/superadmin/transfer", { target_user_id }).then((x) => x.data),
   auditLog: (params: { event_type?: string; limit?: number; offset?: number }) =>
-    client.get<AuditEntry[]>("/admin/audit-log", { params }).then((r) => r.data),
+    client.get<AuditEntry[]>("/admin/audit-log", { params }).then((x) => x.data),
   exportAuditLog: (params: { event_type?: string }) =>
     client
       .get("/admin/audit-log/export", { params, responseType: "blob" })
-      .then((r) => r.data as Blob),
+      .then((x) => x.data as Blob),
 };

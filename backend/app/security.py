@@ -40,16 +40,16 @@ def create_access_token(
     user_id: str,
     nickname: str,
     system_role: str,
-    tournament_role: str | None,
 ) -> str:
     expire = datetime.now(timezone.utc) + timedelta(
         minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
     )
+    # Room roles are per-room and always re-read from the DB; they are never
+    # embedded in the token.
     payload = {
         "sub": str(user_id),
         "nickname": nickname,
         "system_role": system_role,
-        "tournament_role": tournament_role,
         "type": "access",
         "exp": expire,
     }

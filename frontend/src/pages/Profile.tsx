@@ -21,8 +21,8 @@ export default function Profile() {
   const roleLabel =
     user?.system_role === "superadmin"
       ? "Суперадмин"
-      : user?.tournament_role === "admin"
-      ? "Админ турнира"
+      : user?.is_any_admin
+      ? "Админ комнаты"
       : "Игрок";
 
   return (

@@ -1,18 +1,18 @@
 import { useEffect } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useAuth } from "./store/auth";
-import { setAccessToken } from "./api/client";
 import Sidebar from "./components/Sidebar";
 import Login from "./pages/Login";
 import AuthCallback from "./pages/AuthCallback";
+import TelegramAuthCallback from "./pages/TelegramAuthCallback";
 import SetupProfile from "./pages/SetupProfile";
-import TournamentJoin from "./pages/TournamentJoin";
+import RoomsHub from "./pages/RoomsHub";
 import Tournament from "./pages/Tournament";
 import Tour from "./pages/Tour";
 import PredictMatch from "./pages/PredictMatch";
 import MatchPredictions from "./pages/MatchPredictions";
 import Profile from "./pages/Profile";
-import TelegramAuthCallback from "./pages/TelegramAuthCallback";
+import RoomAdmin from "./pages/admin/RoomAdmin";
 import Admin from "./pages/admin/Admin";
 
 function Protected({ children }: { children: JSX.Element }) {
@@ -20,10 +20,7 @@ function Protected({ children }: { children: JSX.Element }) {
   const location = useLocation();
   if (loading) return <div className="p-8 text-slate-500">Загрузка…</div>;
   if (!user) return <Navigate to="/login" replace state={{ from: location }} />;
-  // Player+ gate: must have joined the tournament (superadmin is implicitly in).
-  if (!user.tournament_role && user.system_role !== "superadmin") {
-    return <Navigate to="/tournament-join" replace />;
-  }
+  if (!user.nickname) return <Navigate to="/setup-profile" replace />;
   return children;
 }
 
@@ -38,16 +35,16 @@ function Shell({ children }: { children: JSX.Element }) {
   );
 }
 
+const page = (el: JSX.Element) => (
+  <Protected>
+    <Shell>{el}</Shell>
+  </Protected>
+);
+
 export default function App() {
   const loadMe = useAuth((s) => s.loadMe);
-
   useEffect(() => {
-    if (setAccessToken && localStorage.getItem("access_token")) {
-      loadMe();
-    } else {
-      // Try a silent refresh via cookie.
-      loadMe();
-    }
+    loadMe();
   }, [loadMe]);
 
   return (
@@ -56,68 +53,17 @@ export default function App() {
       <Route path="/auth/callback" element={<AuthCallback />} />
       <Route path="/telegram-auth" element={<TelegramAuthCallback />} />
       <Route path="/setup-profile" element={<SetupProfile />} />
-      <Route path="/tournament-join" element={<TournamentJoin />} />
 
-      <Route
-        path="/"
-        element={
-          <Protected>
-            <Shell>
-              <Tournament />
-            </Shell>
-          </Protected>
-        }
-      />
-      <Route
-        path="/tour/:date"
-        element={
-          <Protected>
-            <Shell>
-              <Tour />
-            </Shell>
-          </Protected>
-        }
-      />
-      <Route
-        path="/match/:id/predict"
-        element={
-          <Protected>
-            <Shell>
-              <PredictMatch />
-            </Shell>
-          </Protected>
-        }
-      />
-      <Route
-        path="/match/:id/predictions"
-        element={
-          <Protected>
-            <Shell>
-              <MatchPredictions />
-            </Shell>
-          </Protected>
-        }
-      />
-      <Route
-        path="/profile"
-        element={
-          <Protected>
-            <Shell>
-              <Profile />
-            </Shell>
-          </Protected>
-        }
-      />
-      <Route
-        path="/admin/*"
-        element={
-          <Protected>
-            <Shell>
-              <Admin />
-            </Shell>
-          </Protected>
-        }
-      />
+      <Route path="/" element={page(<RoomsHub />)} />
+      <Route path="/profile" element={page(<Profile />)} />
+      <Route path="/admin/*" element={page(<Admin />)} />
+
+      <Route path="/room/:roomId" element={page(<Tournament />)} />
+      <Route path="/room/:roomId/tour/:date" element={page(<Tour />)} />
+      <Route path="/room/:roomId/match/:id/predict" element={page(<PredictMatch />)} />
+      <Route path="/room/:roomId/match/:id/predictions" element={page(<MatchPredictions />)} />
+      <Route path="/room/:roomId/admin/*" element={page(<RoomAdmin />)} />
+
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

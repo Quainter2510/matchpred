@@ -2,14 +2,12 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/endpoints";
 import PlayerSearch from "../components/PlayerSearch";
-import CountrySelect from "../components/CountrySelect";
-import TeamName from "../components/TeamName";
 
-export default function SpecialPredictionCard() {
+export default function SpecialPredictionCard({ roomId }: { roomId: string }) {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({
-    queryKey: ["special"],
-    queryFn: api.mySpecial,
+    queryKey: ["special", roomId],
+    queryFn: () => api.mySpecial(roomId),
   });
 
   const [champion, setChampion] = useState("");
@@ -27,22 +25,16 @@ export default function SpecialPredictionCard() {
 
   const save = useMutation({
     mutationFn: () =>
-      api.updateSpecial({
+      api.updateSpecial(roomId, {
         champion_team: champion || null,
         top_scorer_name: scorer.name,
         top_scorer_api_id: scorer.id,
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["special"] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["special", roomId] }),
   });
 
   if (isLoading) return null;
   const locked = data?.locked;
-
-  // Поле подсвечивается зелёным, когда текущее значение совпадает с сохранённым
-  // на сервере (нет несохранённых правок).
-  const championSaved = !!data?.champion_team && champion === data.champion_team;
-  const scorerSaved =
-    !!data?.top_scorer_api_id && scorer.id === data.top_scorer_api_id;
 
   return (
     <section className="card space-y-3">
@@ -56,13 +48,13 @@ export default function SpecialPredictionCard() {
       )}
       <div>
         <label className="text-sm text-slate-600">Чемпион турнира</label>
-        {locked ? (
-          <div className="input flex items-center bg-slate-50">
-            {champion ? <TeamName team={champion} /> : <span className="text-slate-400">—</span>}
-          </div>
-        ) : (
-          <CountrySelect value={champion} onChange={setChampion} highlight={championSaved} />
-        )}
+        <input
+          className="input"
+          placeholder="Например: Бразилия"
+          value={champion}
+          disabled={locked}
+          onChange={(e) => setChampion(e.target.value)}
+        />
       </div>
       <div>
         <label className="text-sm text-slate-600">Лучший бомбардир</label>
@@ -70,7 +62,6 @@ export default function SpecialPredictionCard() {
           value={scorer}
           disabled={locked}
           onSelect={(id, name) => setScorer({ id, name })}
-          highlight={scorerSaved}
         />
       </div>
       {!locked && (

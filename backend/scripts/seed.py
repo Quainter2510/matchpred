@@ -21,7 +21,7 @@ from sqlalchemy import func, select
 
 from app.config import settings
 from app.database import AsyncSessionLocal
-from app.models import Match, Tournament
+from app.models import Match, Room
 from app.security import hash_password
 from app.services import football_api
 
@@ -70,12 +70,15 @@ async def upsert_matches(db) -> tuple[int, str]:
     return created, ""
 
 
-async def ensure_tournament(
+async def ensure_room(
     db, name: str, password: str | None, first_match_at: str | None, no_matches_reason: str = ""
 ) -> str | None:
-    existing = await db.scalar(select(Tournament).limit(1))
+    """Create the default room if no rooms exist yet. The superadmin can create
+    more rooms later from the UI; this just bootstraps the first one so players
+    have somewhere to join right after launch."""
+    existing = await db.scalar(select(Room).limit(1))
     if existing:
-        print(f"Tournament already exists: {existing.name}")
+        print(f"Room already exists: {existing.name}")
         return None
 
     earliest = await db.scalar(select(func.min(Match.kickoff_at)))
@@ -99,10 +102,11 @@ async def ensure_tournament(
 
     password = password or secrets.token_urlsafe(8)
     db.add(
-        Tournament(
+        Room(
             name=name,
             password_hash=hash_password(password),
             first_match_at=earliest,
+            created_by=None,  # claimed by the superadmin on first login
         )
     )
     return password
@@ -111,7 +115,7 @@ async def ensure_tournament(
 async def main(name: str, password: str | None, first_match_at: str | None) -> None:
     async with AsyncSessionLocal() as db:
         created, no_matches_reason = await upsert_matches(db)
-        generated = await ensure_tournament(db, name, password, first_match_at, no_matches_reason)
+        generated = await ensure_room(db, name, password, first_match_at, no_matches_reason)
         await db.commit()
     print(f"Matches created: {created}")
     if generated:

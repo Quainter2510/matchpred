@@ -35,11 +35,11 @@ export const useAuth = create<AuthState>((set, get) => ({
     setAccessToken(null);
     set({ user: null });
   },
+  // Global admin: superadmin or admin of at least one room (may run global
+  // match operations like entering results).
   isAdmin: () => {
     const u = get().user;
-    return (
-      u?.system_role === "superadmin" || u?.tournament_role === "admin"
-    );
+    return u?.system_role === "superadmin" || !!u?.is_any_admin;
   },
   isSuperadmin: () => get().user?.system_role === "superadmin",
 }));
