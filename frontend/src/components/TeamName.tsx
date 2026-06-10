@@ -14,7 +14,7 @@ export default function TeamName({ team, className, flagSide = "left" }: Props) 
   const c = findCountry(team);
   const name = c?.ru ?? team;
   return (
-    <span className={`inline-flex items-center gap-1.5 ${className ?? ""}`}>
+    <span className={`inline-flex max-w-full items-center gap-1.5 ${className ?? ""}`}>
       {c && flagSide === "left" && <Flag code={c.code} title={name} />}
       <span className="min-w-0 break-words">{name}</span>
       {c && flagSide === "right" && <Flag code={c.code} title={name} />}

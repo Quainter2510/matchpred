@@ -11,19 +11,26 @@ export default function MatchCard({ match, roomId }: { match: Match; roomId: str
   const p = match.my_prediction;
 
   return (
-    <div className="card flex flex-col gap-2">
-      <div className="flex items-center justify-between text-xs text-slate-500">
-        <span>{formatTime(match.kickoff_at)} · {formatStage(match.stage, match.group_name)}</span>
-        {!started ? <Countdown to={match.kickoff_at} /> : <span>{finished ? "Завершён" : "Идёт/закрыт"}</span>}
+    <div className="card flex h-full flex-col gap-3">
+      <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
+        <span className="min-w-0 truncate">
+          {formatTime(match.kickoff_at)} · {formatStage(match.stage, match.group_name)}
+        </span>
+        <span className="shrink-0">
+          {!started ? <Countdown to={match.kickoff_at} /> : finished ? "Завершён" : "Идёт/закрыт"}
+        </span>
       </div>
-      <div className="grid grid-cols-3 items-center gap-2">
-        <TeamName team={match.home_team} flagSide="right" className="justify-end text-right font-medium" />
-        <div className="text-center text-xl font-bold">
-          {finished
-            ? `${match.home_score_ft} : ${match.away_score_ft}`
-            : "vs"}
+
+      <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-1 justify-end">
+          <TeamName team={match.home_team} flagSide="right" className="text-right font-medium" />
         </div>
-        <TeamName team={match.away_team} className="justify-start text-left font-medium" />
+        <div className="shrink-0 px-1 text-center text-lg font-bold">
+          {finished ? `${match.home_score_ft}:${match.away_score_ft}` : "vs"}
+        </div>
+        <div className="flex min-w-0 flex-1 justify-start">
+          <TeamName team={match.away_team} className="text-left font-medium" />
+        </div>
       </div>
 
       {p && (
@@ -37,7 +44,7 @@ export default function MatchCard({ match, roomId }: { match: Match; roomId: str
         </div>
       )}
 
-      <div className="flex gap-2">
+      <div className="mt-auto flex gap-2">
         {!started ? (
           <Link to={`/room/${roomId}/match/${match.id}/predict`} className="btn-primary flex-1">
             {p ? "Изменить прогноз" : "Сделать прогноз"}

@@ -12,10 +12,10 @@ const MAX = 20;
 export default function ScoreStepper({ value, onChange, disabled, label }: Props) {
   const clamp = (n: number) => Math.max(MIN, Math.min(MAX, n));
   const btn =
-    "flex h-11 w-11 items-center justify-center rounded-full border border-slate-300 text-2xl font-bold leading-none text-slate-700 select-none active:bg-slate-100 disabled:opacity-40";
+    "flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-slate-300 text-2xl font-bold text-slate-700 select-none active:bg-slate-100 disabled:opacity-40";
 
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex shrink-0 items-center gap-3">
       <button
         type="button"
         aria-label={label ? `${label}: минус` : "минус"}
@@ -23,9 +23,10 @@ export default function ScoreStepper({ value, onChange, disabled, label }: Props
         disabled={disabled || value <= MIN}
         onClick={() => onChange(clamp(value - 1))}
       >
-        −
+        {/* leading-none + flex centering keeps the glyph optically centered */}
+        <span className="leading-none">−</span>
       </button>
-      <span className="w-8 text-center text-3xl font-bold tabular-nums">
+      <span className="w-8 text-center text-3xl font-bold leading-none tabular-nums">
         {value}
       </span>
       <button
@@ -35,7 +36,7 @@ export default function ScoreStepper({ value, onChange, disabled, label }: Props
         disabled={disabled || value >= MAX}
         onClick={() => onChange(clamp(value + 1))}
       >
-        +
+        <span className="leading-none">+</span>
       </button>
     </div>
   );
