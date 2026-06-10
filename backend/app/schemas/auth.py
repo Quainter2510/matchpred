@@ -27,6 +27,8 @@ class MeResponse(BaseModel):
     has_rooms: bool = False
     # Superadmin or admin of at least one room — may perform global match ops.
     is_any_admin: bool = False
+    # Whether a VK account is linked (for the profile indicator).
+    vk_linked: bool = False
 
 
 class UpdateNicknameRequest(BaseModel):

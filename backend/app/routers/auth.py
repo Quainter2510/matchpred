@@ -2,7 +2,16 @@ import secrets
 import uuid
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
 from fastapi.responses import RedirectResponse
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -57,14 +66,24 @@ async def _issue_access(db: AsyncSession, user: User) -> str:
     return create_access_token(str(user.id), user.nickname, user.system_role)
 
 
-def _me(user: User, has_rooms: bool, is_any_admin: bool) -> MeResponse:
+async def _vk_linked(db: AsyncSession, user_id: uuid.UUID) -> bool:
+    found = await db.scalar(
+        select(OAuthAccount.id).where(
+            OAuthAccount.user_id == user_id, OAuthAccount.provider == "vk"
+        )
+    )
+    return found is not None
+
+
+async def _me_full(db: AsyncSession, user: User) -> MeResponse:
     return MeResponse(
         id=user.id,
         nickname=user.nickname,
         avatar_url=user.avatar_url,
         system_role=user.system_role,
-        has_rooms=has_rooms,
-        is_any_admin=is_any_admin,
+        has_rooms=await _has_rooms(db, user.id),
+        is_any_admin=await is_any_admin(db, user),
+        vk_linked=await _vk_linked(db, user.id),
     )
 
 
@@ -307,7 +326,7 @@ async def me(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return _me(user, await _has_rooms(db, user.id), await is_any_admin(db, user))
+    return await _me_full(db, user)
 
 
 @router.patch("/me", response_model=MeResponse)
@@ -335,7 +354,7 @@ async def update_me(
         details={"from": old, "to": nick},
     )
     await db.commit()
-    return _me(user, await _has_rooms(db, user.id), await is_any_admin(db, user))
+    return await _me_full(db, user)
 
 
 @router.post("/vk/link-code")
@@ -349,3 +368,40 @@ async def vk_link_code(user: User = Depends(get_current_user)):
         f"https://vk.me/club{settings.VK_GROUP_ID}" if settings.VK_GROUP_ID else None
     )
     return {"code": code, "bot_url": bot_url}
+
+
+@router.post("/me/avatar", response_model=MeResponse)
+async def upload_avatar(
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Upload and set a custom avatar (center-cropped to a 256×256 JPEG)."""
+    import io
+    import os
+    import time
+
+    from PIL import Image
+
+    if not (file.content_type or "").startswith("image/"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Файл не является изображением")
+    raw = await file.read()
+    if len(raw) > 5 * 1024 * 1024:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Файл больше 5 МБ")
+    try:
+        img = Image.open(io.BytesIO(raw)).convert("RGB")
+        w, h = img.size
+        m = min(w, h)
+        left, top = (w - m) // 2, (h - m) // 2
+        img = img.crop((left, top, left + m, top + m)).resize((256, 256))
+    except Exception:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Не удалось обработать изображение")
+
+    os.makedirs("media/avatars", exist_ok=True)
+    img.save(f"media/avatars/{user.id}.jpg", "JPEG", quality=85)
+    # Absolute URL on the public domain (Caddy already proxies /api → backend).
+    # The ?v= cache-buster forces clients to reload the new image.
+    base = settings.FRONTEND_URL.rstrip("/")
+    user.avatar_url = f"{base}/api/v1/media/avatars/{user.id}.jpg?v={int(time.time())}"
+    await db.commit()
+    return await _me_full(db, user)

@@ -34,6 +34,9 @@ services:
       REDIS_URL: redis://redis:6379/0
     ports:
       - "8000:8000"
+    volumes:
+      # Persist uploaded avatars across rebuilds.
+      - media:/app/media
     depends_on:
       db:
         condition: service_healthy
@@ -54,3 +57,4 @@ services:
 
 volumes:
   pgdata:
+  media:

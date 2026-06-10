@@ -7,6 +7,7 @@ export interface Me {
   system_role: "superadmin" | "user";
   has_rooms: boolean;
   is_any_admin: boolean;
+  vk_linked: boolean;
 }
 
 export interface Room {
@@ -156,6 +157,11 @@ export const api = {
   me: () => client.get<Me>("/auth/me").then((x) => x.data),
   updateNickname: (nickname: string) =>
     client.patch<Me>("/auth/me", { nickname }).then((x) => x.data),
+  uploadAvatar: (file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return client.post<Me>("/auth/me/avatar", fd).then((x) => x.data);
+  },
   telegramVerify: (data: Record<string, unknown>) =>
     client
       .post<{ access_token: string; is_new_user: boolean }>(

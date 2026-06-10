@@ -1,8 +1,10 @@
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -64,6 +66,11 @@ app.include_router(leaderboard.router, prefix=API_V1)
 app.include_router(players.router, prefix=API_V1)
 app.include_router(admin.router, prefix=API_V1)
 app.include_router(bots.router, prefix=API_V1)
+
+# Uploaded media (avatars). Served under /api so the existing reverse proxy
+# (which routes /api → backend) needs no extra configuration.
+os.makedirs("media/avatars", exist_ok=True)
+app.mount(f"{API_V1}/media", StaticFiles(directory="media"), name="media")
 
 
 @app.get("/health")
