@@ -64,6 +64,11 @@ async def score_match(db: AsyncSession, match: Match) -> int:
             points_diff=room.points_diff,
             points_outcome=room.points_outcome,
         )
+        # Бонусный коэффициент матча/тура: ×2, ×3 или ×0 (аннулирование).
+        # При ×0 точный счёт не идёт и в тайбрейк.
+        points *= match.points_multiplier
+        if match.points_multiplier == 0:
+            is_exact = False
         pred.points_awarded = points
         pred.is_exact = is_exact
         await _bump_member(db, pred.room_id, pred.user_id, points, 1 if is_exact else 0)

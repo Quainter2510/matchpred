@@ -18,6 +18,7 @@ from app.schemas.match import (
     MatchOut,
     MatchResult,
     MatchUpdate,
+    MultiplierUpdate,
     MyPrediction,
     PlayerPredictionOut,
 )
@@ -70,6 +71,8 @@ async def match_days(
                 Match.match_date,
                 func.count(),
                 func.min(Match.kickoff_at),
+                func.min(Match.points_multiplier),
+                func.max(Match.points_multiplier),
             )
             .group_by(Match.match_date)
             .order_by(Match.match_date)
@@ -94,8 +97,9 @@ async def match_days(
             match_count=c,
             my_predictions_count=my.get(d, 0),
             first_kickoff_at=first,
+            multiplier=mn if mn == mx else None,
         )
-        for d, c, first in rows
+        for d, c, first, mn, mx in rows
     ]
 
 
@@ -207,6 +211,77 @@ async def update_match(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Match not found")
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(match, field, value)
+    await db.commit()
+    await db.refresh(match)
+    return _to_out(match, None)
+
+
+@admin_router.patch("/tour/{tour_date}/multiplier")
+async def set_tour_multiplier(
+    tour_date: date_type,
+    payload: MultiplierUpdate,
+    user: User = Depends(require_any_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Бонусный коэффициент на весь тур (все матчи даты). Уже начисленные
+    очки пересчитываются с новым коэффициентом."""
+    matches = (
+        await db.execute(select(Match).where(Match.match_date == tour_date))
+    ).scalars().all()
+    if not matches:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No matches on this date")
+
+    rescored = 0
+    for match in matches:
+        if match.points_multiplier == payload.multiplier:
+            continue
+        match.points_multiplier = payload.multiplier
+        if match.status == "finished":
+            await rescore_match(db, match)
+            rescored += 1
+    await audit.log_event(
+        db,
+        "multiplier_changed",
+        actor_id=user.id,
+        actor_nickname=user.nickname,
+        details={
+            "tour": tour_date.isoformat(),
+            "multiplier": payload.multiplier,
+            "matches": len(matches),
+            "rescored": rescored,
+        },
+    )
+    await db.commit()
+    return {"ok": True, "matches": len(matches), "rescored": rescored}
+
+
+@admin_router.patch("/{match_id}/multiplier", response_model=MatchOut)
+async def set_match_multiplier(
+    match_id: uuid.UUID,
+    payload: MultiplierUpdate,
+    user: User = Depends(require_any_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Бонусный коэффициент на отдельный матч (×0 / ×1 / ×2 / ×3)."""
+    match = await db.get(Match, match_id)
+    if not match:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Match not found")
+
+    if match.points_multiplier != payload.multiplier:
+        match.points_multiplier = payload.multiplier
+        if match.status == "finished":
+            await rescore_match(db, match)
+        await audit.log_event(
+            db,
+            "multiplier_changed",
+            actor_id=user.id,
+            actor_nickname=user.nickname,
+            target_id=match.id,
+            details={
+                "match": f"{match.home_team} — {match.away_team}",
+                "multiplier": payload.multiplier,
+            },
+        )
     await db.commit()
     await db.refresh(match)
     return _to_out(match, None)

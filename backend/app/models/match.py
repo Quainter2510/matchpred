@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, Index, Integer, String, func
+from sqlalchemy import Date, DateTime, Index, Integer, SmallInteger, String, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -32,6 +32,11 @@ class Match(Base):
     home_score_ft: Mapped[int | None] = mapped_column(Integer, nullable=True)
     away_score_ft: Mapped[int | None] = mapped_column(Integer, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="scheduled")
+    # Бонусный коэффициент (0 | 1 | 2 | 3): очки за прогнозы на матч умножаются
+    # на него. 0 — аннулирование матча/тура на непредвиденный случай.
+    points_multiplier: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, server_default="1", default=1
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

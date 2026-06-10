@@ -3,7 +3,16 @@ import { Match } from "../api/endpoints";
 import { formatTime, isPast } from "../utils/dates";
 import { formatStage } from "../utils/stage";
 import Countdown from "./Countdown";
+import MultiplierBadge from "./MultiplierBadge";
 import TeamName from "./TeamName";
+
+// Подсветка всей плашки бонусного матча (×2/×3) и аннулированного (×0).
+function multiplierRing(m: number): string {
+  if (m === 0) return "ring-2 ring-slate-400 opacity-75";
+  if (m === 2) return "ring-2 ring-amber-400";
+  if (m === 3) return "ring-2 ring-fuchsia-500";
+  return "";
+}
 
 export function LiveBadge() {
   return (
@@ -22,10 +31,15 @@ export default function MatchCard({ match, roomId }: { match: Match; roomId: str
   const p = match.my_prediction;
 
   return (
-    <div className="card flex h-full flex-col gap-3">
+    <div
+      className={`card flex h-full flex-col gap-3 ${multiplierRing(match.points_multiplier)}`}
+    >
       <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
-        <span className="min-w-0 truncate">
-          {formatTime(match.kickoff_at)} · {formatStage(match.stage, match.group_name)}
+        <span className="flex min-w-0 items-center gap-1.5 truncate">
+          <MultiplierBadge value={match.points_multiplier} />
+          <span className="truncate">
+            {formatTime(match.kickoff_at)} · {formatStage(match.stage, match.group_name)}
+          </span>
         </span>
         <span className="shrink-0">
           {live ? (

@@ -40,6 +40,7 @@ export interface MatchDay {
   match_count: number;
   my_predictions_count: number;
   first_kickoff_at: string;
+  multiplier: number | null;
 }
 
 export interface MyPrediction {
@@ -61,6 +62,7 @@ export interface Match {
   home_score_ft: number | null;
   away_score_ft: number | null;
   status: string;
+  points_multiplier: number;
   my_prediction: MyPrediction | null;
 }
 
@@ -238,6 +240,12 @@ export const api = {
   setResult: (id: string, home: number, away: number) =>
     client
       .post(`/matches/${id}/result`, { home_score_ft: home, away_score_ft: away })
+      .then((x) => x.data),
+  setMatchMultiplier: (id: string, multiplier: number) =>
+    client.patch(`/matches/${id}/multiplier`, { multiplier }).then((x) => x.data),
+  setTourMultiplier: (date: string, multiplier: number) =>
+    client
+      .patch(`/matches/tour/${date}/multiplier`, { multiplier })
       .then((x) => x.data),
 
   // ---- predictions (room-scoped) ----

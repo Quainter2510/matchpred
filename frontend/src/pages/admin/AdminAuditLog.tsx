@@ -10,6 +10,7 @@ const EVENT_LABELS: Record<string, string> = {
   member_removed: "Удалён участник",
   match_result_set: "Добавлен счёт",
   match_result_updated: "Изменён счёт",
+  multiplier_changed: "Изменён коэффициент",
   prediction_set: "Сделан прогноз",
   prediction_updated: "Изменён прогноз",
   scores_recalculated: "Пересчёт очков",

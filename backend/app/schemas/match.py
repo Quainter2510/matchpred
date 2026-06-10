@@ -25,6 +25,7 @@ class MatchOut(BaseModel):
     home_score_ft: int | None = None
     away_score_ft: int | None = None
     status: str
+    points_multiplier: int = 1
     my_prediction: MyPrediction | None = None
 
 
@@ -33,6 +34,13 @@ class MatchDay(BaseModel):
     match_count: int
     my_predictions_count: int
     first_kickoff_at: datetime
+    # Коэффициент тура: значение, если у всех матчей дня он одинаковый,
+    # иначе None (смешанный — бейджи только на отдельных матчах).
+    multiplier: int | None = 1
+
+
+class MultiplierUpdate(BaseModel):
+    multiplier: int = Field(ge=0, le=3)
 
 
 class MatchCreate(BaseModel):

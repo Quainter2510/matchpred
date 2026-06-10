@@ -4,6 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/endpoints";
 import ScoreStepper from "../components/ScoreStepper";
 import Countdown from "../components/Countdown";
+import MultiplierBadge from "../components/MultiplierBadge";
 import TeamName from "../components/TeamName";
 import { formatDate, formatTime, isPast } from "../utils/dates";
 import { formatStage } from "../utils/stage";
@@ -58,6 +59,23 @@ export default function PredictMatch() {
         <div className="text-center text-sm">
           Дедлайн: <Countdown to={match.kickoff_at} />
         </div>
+
+        {match.points_multiplier !== 1 && (
+          <div
+            className={`flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium ${
+              match.points_multiplier === 0
+                ? "bg-slate-100 text-slate-600"
+                : match.points_multiplier === 2
+                  ? "bg-amber-100 text-amber-800"
+                  : "bg-fuchsia-100 text-fuchsia-800"
+            }`}
+          >
+            <MultiplierBadge value={match.points_multiplier} large />
+            {match.points_multiplier === 0
+              ? "Очки за этот матч не начисляются"
+              : `Бонусный матч — очки умножаются на ${match.points_multiplier}`}
+          </div>
+        )}
 
         <div className="space-y-3">
           <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 p-3">

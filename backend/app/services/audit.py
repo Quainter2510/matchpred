@@ -13,6 +13,7 @@ EVENT_TYPES = {
     "member_removed",
     "match_result_set",
     "match_result_updated",
+    "multiplier_changed",
     "prediction_set",
     "prediction_updated",
     "scores_recalculated",

@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/endpoints";
 import { LiveBadge } from "../components/MatchCard";
+import MultiplierBadge from "../components/MultiplierBadge";
 import TeamName from "../components/TeamName";
 
 export default function MatchPredictions() {
@@ -38,6 +39,7 @@ export default function MatchPredictions() {
           </span>
           <TeamName team={match.data.away_team} />
           {match.data.status === "live" && <LiveBadge />}
+          <MultiplierBadge value={match.data.points_multiplier} large />
         </h1>
       )}
       <div className="card">

@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api, MatchDay, RoomScoring } from "../api/endpoints";
 import LeaderboardTable from "../components/LeaderboardTable";
+import MultiplierBadge from "../components/MultiplierBadge";
 import SpecialPredictionCard from "./SpecialPredictionCard";
 import { useAuth } from "../store/auth";
 import { formatDate, isPast } from "../utils/dates";
@@ -199,7 +200,10 @@ export default function Tournament() {
                       className={`flex items-center justify-between rounded-lg border p-3 transition ${st.cls}`}
                     >
                       <span className="flex flex-col">
-                        <span className="font-medium">{formatDate(d.date)}</span>
+                        <span className="flex items-center gap-1.5 font-medium">
+                          {formatDate(d.date)}
+                          {d.multiplier != null && <MultiplierBadge value={d.multiplier} />}
+                        </span>
                         {st.label && (
                           <span className={`text-xs ${st.labelCls}`}>{st.label}</span>
                         )}
