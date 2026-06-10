@@ -12,6 +12,9 @@ _API = "https://api.vk.com/method"
 
 
 async def _call(method: str, params: dict) -> dict:
+    if not settings.VK_GROUP_TOKEN:
+        print("[VK] VK_GROUP_TOKEN is empty — cannot call API")
+        return {"error": "no_token"}
     params = {
         **params,
         "access_token": settings.VK_GROUP_TOKEN,
@@ -21,13 +24,14 @@ async def _call(method: str, params: dict) -> dict:
         resp = await client.post(f"{_API}/{method}", data=params)
         data = resp.json()
     if "error" in data:
+        print(f"[VK] API {method} error: {data['error']}")
         log.warning("VK API %s error: %s", method, data["error"])
     return data
 
 
 async def send_message(
     peer_id: int, text: str, keyboard: dict | None = None
-) -> None:
+) -> dict:
     params = {
         "peer_id": peer_id,
         "message": text,
@@ -35,7 +39,7 @@ async def send_message(
     }
     if keyboard is not None:
         params["keyboard"] = json.dumps(keyboard, ensure_ascii=False)
-    await _call("messages.send", params)
+    return await _call("messages.send", params)
 
 
 async def get_user_name(user_id: int) -> str | None:
