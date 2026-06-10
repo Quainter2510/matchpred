@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/endpoints";
 import PlayerSearch from "../components/PlayerSearch";
+import CountrySelect from "../components/CountrySelect";
+import TeamName from "../components/TeamName";
 
 export default function SpecialPredictionCard({ roomId }: { roomId: string }) {
   const qc = useQueryClient();
@@ -36,6 +38,12 @@ export default function SpecialPredictionCard({ roomId }: { roomId: string }) {
   if (isLoading) return null;
   const locked = data?.locked;
 
+  // Поле подсвечивается зелёным, когда текущее значение совпадает с сохранённым
+  // на сервере (нет несохранённых правок).
+  const championSaved = !!data?.champion_team && champion === data.champion_team;
+  const scorerSaved =
+    !!data?.top_scorer_api_id && scorer.id === data.top_scorer_api_id;
+
   return (
     <section className="card space-y-3">
       <h2 className="text-lg font-semibold">Спецпрогнозы</h2>
@@ -48,13 +56,13 @@ export default function SpecialPredictionCard({ roomId }: { roomId: string }) {
       )}
       <div>
         <label className="text-sm text-slate-600">Чемпион турнира</label>
-        <input
-          className="input"
-          placeholder="Например: Бразилия"
-          value={champion}
-          disabled={locked}
-          onChange={(e) => setChampion(e.target.value)}
-        />
+        {locked ? (
+          <div className="input flex items-center bg-slate-50">
+            {champion ? <TeamName team={champion} /> : <span className="text-slate-400">—</span>}
+          </div>
+        ) : (
+          <CountrySelect value={champion} onChange={setChampion} highlight={championSaved} />
+        )}
       </div>
       <div>
         <label className="text-sm text-slate-600">Лучший бомбардир</label>
@@ -62,6 +70,7 @@ export default function SpecialPredictionCard({ roomId }: { roomId: string }) {
           value={scorer}
           disabled={locked}
           onSelect={(id, name) => setScorer({ id, name })}
+          highlight={scorerSaved}
         />
       </div>
       {!locked && (
