@@ -7,6 +7,7 @@ import MultiplierBadge from "../components/MultiplierBadge";
 import WcStandings from "../components/WcStandings";
 import SpecialPredictionCard from "./SpecialPredictionCard";
 import { useAuth } from "../store/auth";
+import { useViewAs } from "../store/viewAs";
 import { formatDate, isPast, nowMs } from "../utils/dates";
 
 const DAY_MS = 86400000;
@@ -77,8 +78,14 @@ export default function Tournament() {
   });
 
   const me = useAuth((st) => st.user);
-  const isRoomAdmin = room.data?.my_role === "admin";
-  const isAdmin = me?.system_role === "superadmin" || isRoomAdmin;
+  // Режим «как обычный пользователь» действует только у суперадмина — у
+  // обычного админа комнаты случайный флаг в localStorage ничего не прячет.
+  const asPlayer =
+    useViewAs((s) => s.asPlayer) && me?.system_role === "superadmin";
+  // В режиме игрока админ-кнопки спрятаны (бэкенд в этом режиме всё равно
+  // ответит 403 на управление комнатой).
+  const isRoomAdmin = room.data?.my_role === "admin" && !asPlayer;
+  const isAdmin = (me?.system_role === "superadmin" && !asPlayer) || isRoomAdmin;
   const archived = room.data && !room.data.is_active;
   const started = !!room.data?.first_match_at && isPast(room.data.first_match_at);
   // Активная вкладка живёт в URL (?tab=…), чтобы «назад» из тура/матча

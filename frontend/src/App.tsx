@@ -5,6 +5,7 @@ import { useAuth } from "./store/auth";
 import { api } from "./api/endpoints";
 import Sidebar from "./components/Sidebar";
 import SimBanner from "./components/SimBanner";
+import ViewAsBanner from "./components/ViewAsBanner";
 import Login from "./pages/Login";
 import AuthCallback from "./pages/AuthCallback";
 import TelegramAuthCallback from "./pages/TelegramAuthCallback";
@@ -34,6 +35,7 @@ function Shell({ children }: { children: JSX.Element }) {
       <Sidebar />
       <main className="flex-1 pb-20 md:pb-0 md:pl-60">
         <SimBanner />
+        <ViewAsBanner />
         <div className="mx-auto max-w-5xl p-4">{children}</div>
       </main>
     </div>

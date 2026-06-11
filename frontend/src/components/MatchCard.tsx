@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { Match } from "../api/endpoints";
 import { useAuth } from "../store/auth";
+import { useViewAs } from "../store/viewAs";
 import { formatTime, isPast } from "../utils/dates";
 import { formatStage } from "../utils/stage";
 import { classifyPrediction, HitKind } from "../utils/scoring";
@@ -61,7 +62,8 @@ export function LiveBadge() {
 }
 
 export default function MatchCard({ match, roomId }: { match: Match; roomId: string }) {
-  const isSuper = useAuth((s) => s.isSuperadmin());
+  const asPlayer = useViewAs((s) => s.asPlayer);
+  const isSuper = useAuth((s) => s.isSuperadmin()) && !asPlayer;
   const started = isPast(match.kickoff_at);
   const finished = match.status === "finished";
   const live = match.status === "live";

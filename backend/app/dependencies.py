@@ -75,6 +75,22 @@ async def require_any_admin(
 
 
 # ---------------- Room-scoped access ----------------
+# Режим «как обычный пользователь»: суперадмин может отправить заголовок
+# X-View-As: player — тогда в room-контексте он считается обычным участником
+# (прячутся чужие прогнозы до начала, заполняемость туров; управление комнатой
+# отвечает 403). Для остальных ролей заголовок молча игнорируется. Глобальная
+# панель (require_any_admin / require_superadmin) не затрагивается — иначе
+# нельзя было бы выключить режим.
+VIEW_AS_HEADER = "X-View-As"
+
+
+def _view_as_player(request: Request, user: User) -> bool:
+    return (
+        user.system_role == "superadmin"
+        and request.headers.get(VIEW_AS_HEADER, "").strip().lower() == "player"
+    )
+
+
 @dataclass
 class RoomContext:
     user: User
@@ -84,35 +100,42 @@ class RoomContext:
 
 
 async def _load_room_ctx(
-    room_id: uuid.UUID, user: User, db: AsyncSession
+    room_id: uuid.UUID, user: User, db: AsyncSession, *, as_player: bool = False
 ) -> RoomContext:
     room = await db.get(Room, room_id)
     if not room:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Room not found")
     member = await db.get(RoomMember, (room_id, user.id))
-    is_admin = user.system_role == "superadmin" or (
-        member is not None and member.room_role == "admin"
+    is_admin = not as_player and (
+        user.system_role == "superadmin"
+        or (member is not None and member.room_role == "admin")
     )
     return RoomContext(user=user, room=room, member=member, is_admin=is_admin)
 
 
 async def require_room_member(
     room_id: uuid.UUID,
+    request: Request,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> RoomContext:
-    ctx = await _load_room_ctx(room_id, user, db)
-    if ctx.member is None and user.system_role != "superadmin":
+    as_player = _view_as_player(request, user)
+    ctx = await _load_room_ctx(room_id, user, db, as_player=as_player)
+    # В режиме игрока суперадмин без членства не проходит — как обычный юзер.
+    if ctx.member is None and (user.system_role != "superadmin" or as_player):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not a member of this room")
     return ctx
 
 
 async def require_room_admin(
     room_id: uuid.UUID,
+    request: Request,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> RoomContext:
-    ctx = await _load_room_ctx(room_id, user, db)
+    ctx = await _load_room_ctx(
+        room_id, user, db, as_player=_view_as_player(request, user)
+    )
     if not ctx.is_admin:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Room admin access required")
     return ctx

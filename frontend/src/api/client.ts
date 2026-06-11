@@ -1,5 +1,6 @@
 import axios from "axios";
 import { getSimNow } from "../store/sim";
+import { getViewAsPlayer } from "../store/viewAs";
 
 export const API_BASE =
   import.meta.env.VITE_API_BASE || "http://localhost:8000/api/v1";
@@ -32,6 +33,11 @@ client.interceptors.request.use((config) => {
   const simNow = getSimNow();
   if (simNow && !(config.url || "").startsWith("/auth")) {
     config.headers["X-Sim-Now"] = simNow;
+  }
+  // Режим «как обычный пользователь» (суперадмин): бэкенд учитывает заголовок
+  // только в room-контексте; /auth и глобальная панель работают как обычно.
+  if (getViewAsPlayer() && !(config.url || "").startsWith("/auth")) {
+    config.headers["X-View-As"] = "player";
   }
   return config;
 });
