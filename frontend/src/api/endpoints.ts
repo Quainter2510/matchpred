@@ -147,6 +147,41 @@ export interface PlayerProfile {
   matches: PlayerProfileMatch[];
 }
 
+export interface StandingsMatch {
+  id: string;
+  home_team: string;
+  away_team: string;
+  home_score: number | null;
+  away_score: number | null;
+  status: string;
+  kickoff_at: string;
+}
+
+export interface GroupTeamRow {
+  team: string;
+  played: number;
+  goals_for: number;
+  goals_against: number;
+  goal_diff: number;
+  points: number;
+}
+
+export interface GroupStanding {
+  name: string;
+  teams: GroupTeamRow[];
+  matches: StandingsMatch[];
+}
+
+export interface PlayoffStage {
+  stage: string;
+  matches: StandingsMatch[];
+}
+
+export interface Standings {
+  groups: GroupStanding[];
+  playoff: PlayoffStage[];
+}
+
 export interface AuditEntry {
   id: number;
   created_at: string;
@@ -278,6 +313,10 @@ export const api = {
   // ---- player profile (room-scoped) ----
   playerProfile: (roomId: string, userId: string) =>
     client.get<PlayerProfile>(`${r(roomId)}/players/${userId}`).then((x) => x.data),
+
+  // ---- standings (room-scoped; данные глобальные) ----
+  standings: (roomId: string) =>
+    client.get<Standings>(`${r(roomId)}/standings`).then((x) => x.data),
 
   // ---- leaderboard (room-scoped) ----
   leaderboard: (roomId: string) =>

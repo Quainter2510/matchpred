@@ -2,6 +2,7 @@
 // "round_of_16", "final") в человекочитаемую подпись на русском.
 
 const KNOCKOUT: { re: RegExp; label: string }[] = [
+  { re: /round[_\s-]*of[_\s-]*32|1\/16/, label: "1/16 финала" },
   { re: /round[_\s-]*of[_\s-]*16|1\/8/, label: "1/8 финала" },
   { re: /quarter|1\/4/, label: "1/4 финала" },
   { re: /semi|1\/2/, label: "1/2 финала" },

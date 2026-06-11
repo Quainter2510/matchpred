@@ -21,6 +21,7 @@ from app.routers import (
     predictions,
     rooms,
     special,
+    standings,
 )
 from app.services.scheduler import start_scheduler, stop_scheduler
 
@@ -80,6 +81,7 @@ app.include_router(predictions.router, prefix=API_V1)
 app.include_router(special.router, prefix=API_V1)
 app.include_router(special.players_router, prefix=API_V1)
 app.include_router(leaderboard.router, prefix=API_V1)
+app.include_router(standings.router, prefix=API_V1)
 app.include_router(players.router, prefix=API_V1)
 app.include_router(admin.router, prefix=API_V1)
 app.include_router(bots.router, prefix=API_V1)

@@ -65,6 +65,7 @@ backend/
 │   │   ├── predictions.py     # /rooms/{id}/predictions/*
 │   │   ├── special.py         # /rooms/{id}/special-prediction/*, /players/search
 │   │   ├── leaderboard.py     # /rooms/{id}/leaderboard
+│   │   ├── standings.py       # /rooms/{id}/standings — положение ЧМ (группы + плей-офф)
 │   │   ├── players.py         # /rooms/{id}/players/{uid} — профиль игрока в комнате
 │   │   ├── admin.py           # /admin/* (sync, recalculate, scorer-result, журнал)
 │   │   └── bots.py            # /bots/vk/callback — VK Callback API
@@ -116,8 +117,9 @@ frontend/
 │   │       ├── AdminSimulation.tsx # вкладка «Симуляция» (только суперадмин)
 │   │       └── RoomAdmin.tsx      # управление комнатой: участники, пароль, регламент
 │   ├── components/                # Sidebar, MatchCard, ScoreStepper, Countdown,
-│   │                              # LeaderboardTable, MultiplierBadge, AuthModal,
-│   │                              # SimBanner, PlayerSearch, CountrySelect, Flag, …
+│   │                              # LeaderboardTable, WcStandings (вкладка «ЧМ-2026»),
+│   │                              # MultiplierBadge, AuthModal, SimBanner, PlayerSearch,
+│   │                              # CountrySelect, Flag, TeamName, …
 │   ├── api/
 │   │   ├── client.ts              # axios + JWT + auto-refresh + заголовок X-Sim-Now
 │   │   └── endpoints.ts           # типизированные вызовы API
@@ -385,6 +387,12 @@ frontend/
 |-------|------|--------|---------|
 | GET | `/rooms/{id}/leaderboard` | Member | `[{place, user_id, nickname, avatar_url, total_points, exact_scores_count, has_champion, has_scorer, champion_correct, scorer_correct, participation_confirmed, champion_team*, top_scorer_name*}]` — поля со звёздочкой видны после старта турнира. Кэш Redis 60 сек по комнате |
 | GET | `/rooms/{id}/leaderboard/me` | Member | Моя строка таблицы |
+
+### Турнирное положение ЧМ — `/rooms/{id}/standings`
+
+| Метод | Путь | Доступ | Описание |
+|-------|------|--------|---------|
+| GET | `/rooms/{id}/standings` | Member | `{groups: [{name, teams: [{team, played, goals_for, goals_against, goal_diff, points}], matches}], playoff: [{stage, matches}]}`. Группы — по букве из `group_name`/кода стадии; очки 3/1/0 и разница — только по завершённым матчам; сортировка: очки → разница → забитые → алфавит. Плей-офф — стадии в порядке первого матча. Данные глобальные (одинаковы во всех комнатах), уважает режим симуляции |
 
 ### Профиль игрока — `/rooms/{id}/players`
 

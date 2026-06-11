@@ -4,6 +4,7 @@ import { Link, useParams } from "react-router-dom";
 import { api, MatchDay, RoomScoring } from "../api/endpoints";
 import LeaderboardTable from "../components/LeaderboardTable";
 import MultiplierBadge from "../components/MultiplierBadge";
+import WcStandings from "../components/WcStandings";
 import SpecialPredictionCard from "./SpecialPredictionCard";
 import { useAuth } from "../store/auth";
 import { formatDate, isPast, nowMs } from "../utils/dates";
@@ -80,7 +81,7 @@ export default function Tournament() {
   const isAdmin = me?.system_role === "superadmin" || isRoomAdmin;
   const archived = room.data && !room.data.is_active;
   const started = !!room.data?.first_match_at && isPast(room.data.first_match_at);
-  const [tab, setTab] = useState<"table" | "predictions">("table");
+  const [tab, setTab] = useState<"table" | "predictions" | "wc">("table");
   const [showRules, setShowRules] = useState(false);
   const rulesText = room.data?.rules_text || defaultRules(room.data?.scoring);
 
@@ -148,6 +149,7 @@ export default function Tournament() {
         {([
           ["table", "Таблица"],
           ["predictions", "Прогнозы"],
+          ["wc", "ЧМ-2026"],
         ] as const).map(([id, label]) => (
           <button
             key={id}
@@ -177,6 +179,8 @@ export default function Tournament() {
           )}
         </section>
       )}
+
+      {tab === "wc" && <WcStandings roomId={roomId!} />}
 
       {tab === "predictions" && (
         <div className="space-y-6">
