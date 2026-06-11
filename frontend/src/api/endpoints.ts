@@ -153,6 +153,22 @@ export interface PlayerProfile {
   matches: PlayerProfileMatch[];
 }
 
+export interface TeamFormMatch {
+  kickoff_at: string;
+  competition: string | null;
+  home_team: string;
+  away_team: string;
+  home_score: number;
+  away_score: number;
+}
+
+export interface MatchForm {
+  home_team: string;
+  away_team: string;
+  home: TeamFormMatch[];
+  away: TeamFormMatch[];
+}
+
 export interface StandingsMatch {
   id: string;
   home_team: string;
@@ -271,6 +287,8 @@ export const api = {
     client
       .get<PlayerPrediction[]>(`${r(roomId)}/matches/${id}/predictions`)
       .then((x) => x.data),
+  matchForm: (roomId: string, id: string) =>
+    client.get<MatchForm>(`${r(roomId)}/matches/${id}/form`).then((x) => x.data),
 
   // ---- matches (global admin) ----
   adminMatches: () => client.get<Match[]>("/matches").then((x) => x.data),

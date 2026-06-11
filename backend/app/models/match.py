@@ -40,3 +40,30 @@ class Match(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class TeamMatch(Base):
+    """Справочник матчей сборных за 2026 год во всех турнирах (форма команд
+    на странице прогноза). Заполняется разово скриптом
+    scripts/fetch_team_fixtures.py и НЕ участвует в прогнозах/очках — матчи
+    самого ЧМ сюда не пишутся (они в matches и подмешиваются при чтении)."""
+
+    __tablename__ = "team_matches"
+    __table_args__ = (
+        Index("ix_team_matches_home", "home_team"),
+        Index("ix_team_matches_away", "away_team"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    api_football_id: Mapped[int] = mapped_column(Integer, unique=True, nullable=False)
+    kickoff_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    competition: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    home_team: Mapped[str] = mapped_column(String(100), nullable=False)
+    away_team: Mapped[str] = mapped_column(String(100), nullable=False)
+    home_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    away_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="scheduled")

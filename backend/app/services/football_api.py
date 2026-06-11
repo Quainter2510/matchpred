@@ -133,6 +133,57 @@ async def fetch_fixtures(with_groups: bool = True) -> list[dict]:
     return [_normalize_fixture(fx, groups) for fx in data.get("response", [])]
 
 
+async def fetch_wc_team_ids() -> dict[int, str]:
+    """ID сборных-участниц ЧМ → название. Берём из фикстур турнира (там есть
+    teams.home.id / teams.away.id), отдельный запрос /teams не нужен."""
+    data = await _get(
+        "/fixtures",
+        {
+            "league": settings.API_FOOTBALL_LEAGUE_ID,
+            "season": settings.API_FOOTBALL_SEASON,
+        },
+    )
+    out: dict[int, str] = {}
+    for fx in data.get("response", []):
+        for side in ("home", "away"):
+            team = fx.get("teams", {}).get(side, {})
+            tid, name = team.get("id"), team.get("name")
+            # Плейсхолдеры плей-офф (TBD) приходят без id.
+            if tid and name:
+                out[tid] = name
+    return out
+
+
+async def fetch_team_fixtures(team_id: int, season: int) -> list[dict]:
+    """Все матчи команды за сезон (год) во всех турнирах — для справочника
+    team_matches (форма сборных). Матчи нашего ЧМ (league = настроенная лига)
+    отфильтровываются: они живут в `matches` и подмешиваются при чтении."""
+    data = await _get("/fixtures", {"team": team_id, "season": season})
+    out = []
+    for fx in data.get("response", []):
+        league = fx.get("league", {})
+        if league.get("id") == settings.API_FOOTBALL_LEAGUE_ID:
+            continue
+        fixture = fx["fixture"]
+        goals = fx.get("goals", {})
+        raw_status = fixture.get("status", {}).get("short", "NS")
+        out.append(
+            {
+                "api_football_id": fixture["id"],
+                "kickoff_at": datetime.fromisoformat(fixture["date"]).astimezone(
+                    timezone.utc
+                ),
+                "competition": league.get("name"),
+                "home_team": fx["teams"]["home"]["name"],
+                "away_team": fx["teams"]["away"]["name"],
+                "home_score": goals.get("home"),
+                "away_score": goals.get("away"),
+                "status": _STATUS_MAP.get(raw_status, "scheduled"),
+            }
+        )
+    return out
+
+
 # Бомбардир — это почти всегда нападающий, реже полузащитник. Поднимаем таких
 # кандидатов наверх списка, чтобы не тонуть в защитниках/вратарях.
 _POSITION_RANK = {"Attacker": 0, "Midfielder": 1, "Defender": 2, "Goalkeeper": 3}

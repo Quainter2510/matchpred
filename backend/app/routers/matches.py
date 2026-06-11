@@ -11,16 +11,18 @@ from app.dependencies import (
     require_any_admin,
     require_room_member,
 )
-from app.models import Match, Prediction, Room, RoomMember, User
+from app.models import Match, Prediction, Room, RoomMember, TeamMatch, User
 from app.schemas.match import (
     MatchCreate,
     MatchDay,
+    MatchFormOut,
     MatchOut,
     MatchResult,
     MatchUpdate,
     MultiplierUpdate,
     MyPrediction,
     PlayerPredictionOut,
+    TeamFormMatch,
 )
 from app.services import audit
 from app.services.recalc import rescore_match, score_match
@@ -218,6 +220,90 @@ async def match_detail(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Match not found")
     preds = await _my_preds_map(db, ctx.room.id, ctx.user.id, [match.id])
     return _to_out(match, preds.get(match.id), room=ctx.room, sim=sim)
+
+
+FORM_LIMIT = 7
+WC_LABEL = "ЧМ-2026"
+
+
+async def _team_form(
+    db: AsyncSession, team: str, exclude_match_id, sim: SimContext
+) -> list[TeamFormMatch]:
+    """Последние сыгранные матчи сборной: справочник team_matches (все турниры
+    2026 года, собран разово скриптом) + завершённые матчи ЧМ из основной
+    таблицы. Новые матчи ЧМ вытесняют старые сами собой — после турнира список
+    замирает, досинхронизация не нужна."""
+    out: list[TeamFormMatch] = []
+
+    rows = (
+        await db.execute(
+            select(TeamMatch).where(
+                (TeamMatch.home_team == team) | (TeamMatch.away_team == team)
+            )
+        )
+    ).scalars().all()
+    for tm in rows:
+        if tm.status != "finished" or tm.home_score is None or tm.away_score is None:
+            continue
+        out.append(
+            TeamFormMatch(
+                kickoff_at=tm.kickoff_at,
+                competition=tm.competition,
+                home_team=tm.home_team,
+                away_team=tm.away_team,
+                home_score=tm.home_score,
+                away_score=tm.away_score,
+            )
+        )
+
+    wc = (
+        await db.execute(
+            select(Match).where((Match.home_team == team) | (Match.away_team == team))
+        )
+    ).scalars().all()
+    for m in wc:
+        if m.id == exclude_match_id:
+            continue
+        status_, home, away = (
+            effective_result(m, sim)
+            if sim.active
+            else (m.status, m.home_score_ft, m.away_score_ft)
+        )
+        if status_ != "finished" or home is None or away is None:
+            continue
+        out.append(
+            TeamFormMatch(
+                kickoff_at=m.kickoff_at,
+                competition=WC_LABEL,
+                home_team=m.home_team,
+                away_team=m.away_team,
+                home_score=home,
+                away_score=away,
+            )
+        )
+
+    out.sort(key=lambda f: f.kickoff_at, reverse=True)
+    return out[:FORM_LIMIT]
+
+
+@room_router.get("/{match_id}/form", response_model=MatchFormOut)
+async def match_form(
+    match_id: uuid.UUID,
+    ctx: RoomContext = Depends(require_room_member),
+    sim: SimContext = Depends(get_sim),
+    db: AsyncSession = Depends(get_db),
+):
+    """Форма обеих сборных для страницы прогноза (последние сыгранные матчи,
+    не больше FORM_LIMIT на команду)."""
+    match = await db.get(Match, match_id)
+    if not match:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Match not found")
+    return MatchFormOut(
+        home_team=match.home_team,
+        away_team=match.away_team,
+        home=await _team_form(db, match.home_team, match.id, sim),
+        away=await _team_form(db, match.away_team, match.id, sim),
+    )
 
 
 @room_router.get("/{match_id}/predictions", response_model=list[PlayerPredictionOut])

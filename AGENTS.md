@@ -86,9 +86,11 @@ backend/
 │           ├── state.py       # состояние диалога + одноразовые коды привязки
 │           ├── teams.py       # названия команд
 │           └── vk_client.py   # отправка сообщений в VK
-├── alembic/versions/          # 0001…0007 (rooms — 0004, multiplier — 0007)
-├── tests/                     # test_scoring.py, test_auth.py (без БД)
-├── scripts/seed.py            # фикстуры из API-Football + первая комната
+├── alembic/versions/          # 0001…0008 (rooms — 0004, multiplier — 0007, team_matches — 0008)
+├── tests/                     # test_scoring.py, test_auth.py, test_simulation.py (без БД)
+├── scripts/
+│   ├── seed.py                # фикстуры из API-Football + первая комната
+│   └── fetch_team_fixtures.py # разово: матчи 48 сборных за сезон → team_matches
 ├── Dockerfile                 # выполняет alembic upgrade head при старте
 ├── .env.example
 └── requirements.txt
@@ -203,6 +205,24 @@ frontend/
 | updated_at | TIMESTAMPTZ | |
 
 > ⚠️ Поля ET/PKS (допвремя, пенальти) **не добавлять** — не используются в логике.
+
+### team_matches — справочник матчей сборных (форма)
+
+| Поле | Тип | Описание |
+|------|-----|---------|
+| id | UUID PK | |
+| api_football_id | INT UNIQUE NOT NULL | |
+| kickoff_at | TIMESTAMPTZ NOT NULL | |
+| competition | VARCHAR(100) NULLABLE | название турнира из API |
+| home_team / away_team | VARCHAR(100) NOT NULL | индексы по обоим полям |
+| home_score / away_score | INT NULLABLE | |
+| status | VARCHAR(20) DEFAULT 'scheduled' | |
+
+Матчи 48 сборных за сезон во **всех турнирах, кроме самого ЧМ** (его матчи в
+`matches` и подмешиваются при чтении `/form`). Заполняется разово скриптом
+`scripts/fetch_team_fixtures.py` (~50 запросов, upsert — можно перезапускать).
+**Не участвует** в прогнозах, очках и турах — только блок «последние матчи»
+на странице прогноза.
 
 ### predictions
 
@@ -353,6 +373,7 @@ frontend/
 | GET | `/rooms/{id}/matches/days` | Member | `[{date, match_count, my_predictions_count, first_kickoff_at, multiplier, finished_count, my_points, members_filled, members_total}]` (multiplier = общий для дня или null; my_points — мои очки за завершённые матчи дня; members_* — заполняемость тура, только для админов комнаты, иначе null) |
 | GET | `/rooms/{id}/matches?date=` | Member | Матчи на дату + мой прогноз в этой комнате |
 | GET | `/rooms/{id}/matches/{mid}` | Member | Один матч + мой прогноз |
+| GET | `/rooms/{id}/matches/{mid}/form` | Member | Форма обеих сборных: последние сыгранные матчи 2026 года (≤7 на команду) — справочник `team_matches` + завершённые матчи ЧМ из `matches` (новые матчи ЧМ вытесняют старые; после турнира список замирает). Учитывает симуляцию |
 | GET | `/rooms/{id}/matches/{mid}/predictions` | Member | **Все участники комнаты**; у не сделавших прогноз `predicted_*` = null (фронт показывает прочерки). 403 до kickoff (RAdmin — всегда) |
 
 ### Матчи (глобальный админ) — `/matches`

@@ -5,6 +5,7 @@ import { api } from "../api/endpoints";
 import ScoreStepper from "../components/ScoreStepper";
 import Countdown from "../components/Countdown";
 import MultiplierBadge from "../components/MultiplierBadge";
+import TeamForm from "../components/TeamForm";
 import TeamName from "../components/TeamName";
 import { formatDate, formatTime, isPast } from "../utils/dates";
 import { formatStage } from "../utils/stage";
@@ -16,6 +17,12 @@ export default function PredictMatch() {
   const { data: match, isLoading } = useQuery({
     queryKey: ["match", roomId, id],
     queryFn: () => api.match(roomId!, id!),
+    enabled: !!roomId && !!id,
+  });
+  // Форма команд: последние сыгранные матчи 2026 года (все турниры + ЧМ).
+  const form = useQuery({
+    queryKey: ["match-form", roomId, id],
+    queryFn: () => api.matchForm(roomId!, id!),
     enabled: !!roomId && !!id,
   });
 
@@ -122,6 +129,16 @@ export default function PredictMatch() {
           исход — 1.
         </p>
       </div>
+
+      {form.data && (form.data.home.length > 0 || form.data.away.length > 0) && (
+        <div className="card space-y-4">
+          <h2 className="text-sm font-semibold text-slate-500">
+            Последние матчи в 2026 году
+          </h2>
+          <TeamForm team={form.data.home_team} matches={form.data.home} />
+          <TeamForm team={form.data.away_team} matches={form.data.away} />
+        </div>
+      )}
     </div>
   );
 }

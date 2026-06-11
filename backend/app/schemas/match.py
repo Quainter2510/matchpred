@@ -72,6 +72,24 @@ class MatchResult(BaseModel):
     away_score_ft: int = Field(ge=0, le=50)
 
 
+class TeamFormMatch(BaseModel):
+    kickoff_at: datetime
+    competition: str | None = None
+    home_team: str
+    away_team: str
+    home_score: int
+    away_score: int
+
+
+class MatchFormOut(BaseModel):
+    """Последние сыгранные матчи обеих сборных (форма) для страницы прогноза."""
+
+    home_team: str
+    away_team: str
+    home: list[TeamFormMatch]
+    away: list[TeamFormMatch]
+
+
 class PlayerPredictionOut(BaseModel):
     user_id: uuid.UUID
     nickname: str

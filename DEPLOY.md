@@ -110,6 +110,13 @@ docker compose logs -f backend
 docker compose exec backend python -m scripts.seed
 ```
 
+Опционально — заполнить блок «последние матчи сборных» на странице прогноза
+(~50 запросов к API, можно перезапускать для обновления счетов):
+
+```bash
+docker compose exec backend python -m scripts.fetch_team_fixtures
+```
+
 Скрипт загрузит матчи из API-Football, создаст первую комнату
 (`first_match_at` = время самого раннего матча) и **выведет временный пароль
 комнаты** — сохраните его, потом смените в панели. Остальные комнаты суперадмин
