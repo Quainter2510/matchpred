@@ -40,6 +40,14 @@ export const HIT_BG: Record<HitKind, string> = {
   miss: "bg-rose-50/60",
 };
 
+// Бейдж очков (+N) — чуть плотнее заливки строк.
+export const HIT_BADGE: Record<HitKind, string> = {
+  exact: "bg-emerald-100 text-emerald-700",
+  diff: "bg-sky-100 text-sky-700",
+  outcome: "bg-amber-100 text-amber-800",
+  miss: "bg-rose-100 text-rose-700",
+};
+
 export const HIT_CARD: Record<HitKind, string> = {
   exact: "border-emerald-200 bg-emerald-50/60",
   diff: "border-sky-200 bg-sky-50/60",

@@ -19,26 +19,30 @@ function byPoints(a: PlayerPrediction, b: PlayerPrediction): number {
   return a.nickname.localeCompare(b.nickname, "ru");
 }
 
+function isFinished(m: Match | undefined): boolean {
+  return (
+    !!m &&
+    m.status === "finished" &&
+    m.home_score_ft != null &&
+    m.away_score_ft != null
+  );
+}
+
 // Единая цветовая схема: точный — зелёный, разница — синий, исход — янтарный,
 // промах — красный. Категория считается по счёту, а не по очкам, поэтому
-// не зависит от правил комнаты и коэффициента матча.
+// не зависит от правил комнаты и коэффициента матча. Пропущенный прогноз на
+// завершённом матче — как промах (0 очков, красная строка).
 function rowTint(p: PlayerPrediction, m: Match | undefined): string {
-  if (
-    p.predicted_home == null ||
-    p.predicted_away == null ||
-    p.points_awarded == null ||
-    !m ||
-    m.status !== "finished" ||
-    m.home_score_ft == null ||
-    m.away_score_ft == null
-  )
-    return "";
+  if (!isFinished(m)) return "";
+  if (p.predicted_home == null || p.predicted_away == null)
+    return HIT_BG.miss;
+  if (p.points_awarded == null) return "";
   return HIT_BG[
     classifyPrediction(
       p.predicted_home,
       p.predicted_away,
-      m.home_score_ft,
-      m.away_score_ft
+      m!.home_score_ft!,
+      m!.away_score_ft!
     )
   ];
 }
@@ -124,6 +128,9 @@ export default function MatchPredictions() {
                       <span className={p.is_exact ? "font-bold text-emerald-600" : ""}>
                         +{p.points_awarded}
                       </span>
+                    ) : p.predicted_home == null && isFinished(match.data) ? (
+                      // Пропущенный прогноз на завершённом матче = 0 очков.
+                      <span className="font-semibold text-rose-600">0</span>
                     ) : (
                       "—"
                     )}

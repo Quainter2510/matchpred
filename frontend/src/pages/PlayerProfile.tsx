@@ -1,11 +1,16 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, PlayerProfileMatch } from "../api/endpoints";
 import TeamName from "../components/TeamName";
 import { formatDate, formatTime } from "../utils/dates";
 import { formatStage } from "../utils/stage";
-import { classifyPrediction, HIT_CARD } from "../utils/scoring";
+import {
+  classifyPrediction,
+  HIT_BADGE,
+  HIT_CARD,
+  HitKind,
+} from "../utils/scoring";
 
 function Avatar({ url, nick, size }: { url: string | null; nick: string; size: string }) {
   return url ? (
@@ -20,7 +25,7 @@ function Avatar({ url, nick, size }: { url: string | null; nick: string; size: s
 // Цвет строки матча — единая схема по категории попадания (см. utils/scoring):
 // сравниваем счета напрямую, поэтому коэффициенты и правила комнаты не ломают
 // классификацию.
-function rowClass(m: PlayerProfileMatch): string {
+function kindOf(m: PlayerProfileMatch): HitKind | null {
   if (
     m.points_awarded == null ||
     m.predicted_home == null ||
@@ -28,10 +33,18 @@ function rowClass(m: PlayerProfileMatch): string {
     m.home_score_ft == null ||
     m.away_score_ft == null
   )
-    return "border-slate-200 bg-white";
-  return HIT_CARD[
-    classifyPrediction(m.predicted_home, m.predicted_away, m.home_score_ft, m.away_score_ft)
-  ];
+    return null;
+  return classifyPrediction(
+    m.predicted_home,
+    m.predicted_away,
+    m.home_score_ft,
+    m.away_score_ft
+  );
+}
+
+function rowClass(m: PlayerProfileMatch): string {
+  const kind = kindOf(m);
+  return kind ? HIT_CARD[kind] : "border-slate-200 bg-white";
 }
 
 function score(h: number | null, a: number | null): string {
@@ -194,32 +207,49 @@ export default function PlayerProfile() {
                   <span>
                     {formatTime(m.kickoff_at)} · {formatStage(m.stage, m.group_name)}
                   </span>
-                  <span>
-                    {m.points_awarded != null ? (
-                      <span className={m.is_exact ? "font-bold text-emerald-700" : "font-medium"}>
-                        +{m.points_awarded}
-                      </span>
-                    ) : (
-                      "—"
-                    )}
-                  </span>
+                  {m.points_awarded != null ? (
+                    <span
+                      className={`rounded px-2 py-0.5 text-lg font-bold tabular-nums ${
+                        HIT_BADGE[kindOf(m) ?? "outcome"]
+                      }`}
+                    >
+                      +{m.points_awarded}
+                    </span>
+                  ) : (
+                    <span>—</span>
+                  )}
                 </div>
                 <div className="mt-1 grid grid-cols-3 items-center gap-2">
                   <TeamName team={m.home_team} flagSide="right" className="justify-end text-right font-medium" />
                   <div className="text-center">
                     <div
-                      className={`text-lg font-bold ${m.status === "live" ? "text-red-600" : ""}`}
+                      className={`text-2xl font-bold tabular-nums ${
+                        m.status === "live" ? "text-red-600" : ""
+                      }`}
                     >
                       {m.home_score_ft != null && m.away_score_ft != null
                         ? score(m.home_score_ft, m.away_score_ft)
                         : "—:—"}
                     </div>
-                    <div className="text-xs text-slate-500">
-                      прогноз: {score(m.predicted_home, m.predicted_away)}
+                    <div className="text-sm text-slate-600">
+                      прогноз:{" "}
+                      <b className="text-base tabular-nums">
+                        {score(m.predicted_home, m.predicted_away)}
+                      </b>
                     </div>
                   </div>
                   <TeamName team={m.away_team} className="justify-start text-left font-medium" />
                 </div>
+                {m.started && (
+                  <div className="mt-1 text-right">
+                    <Link
+                      to={`/room/${roomId}/match/${m.match_id}/predictions`}
+                      className="text-xs text-brand hover:underline"
+                    >
+                      Прогнозы участников →
+                    </Link>
+                  </div>
+                )}
               </div>
             );
           }

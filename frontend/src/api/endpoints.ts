@@ -153,6 +153,16 @@ export interface PlayerProfile {
   matches: PlayerProfileMatch[];
 }
 
+export interface TourPlayer {
+  user_id: string;
+  nickname: string;
+  avatar_url: string | null;
+  points: number;
+  exact_count: number;
+  predictions_count: number;
+  match_count: number;
+}
+
 export interface TeamFormMatch {
   kickoff_at: string;
   competition: string | null;
@@ -314,6 +324,11 @@ export const api = {
     predictions: { match_id: string; home: number; away: number }[]
   ) =>
     client.post(`${r(roomId)}/predictions/batch`, { predictions }).then((x) => x.data),
+
+  tourLeaderboard: (roomId: string, date: string) =>
+    client
+      .get<TourPlayer[]>(`${r(roomId)}/predictions/tour/${date}/all`)
+      .then((x) => x.data),
 
   // ---- special (room-scoped) ----
   mySpecial: (roomId: string) =>

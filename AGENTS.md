@@ -394,6 +394,7 @@ frontend/
 | POST | `/rooms/{id}/predictions/batch` | Member | `{predictions:[{match_id, home, away}]}` → по каждому `{accepted, reason}` (`room_archived│deadline_passed│invalid_score│match_not_found`) |
 | GET | `/rooms/{id}/predictions/my` | Member | Все мои прогнозы в комнате с очками |
 | GET | `/rooms/{id}/predictions/tour/{date}` | Member | `{date, points, exact_count}` |
+| GET | `/rooms/{id}/predictions/tour/{date}/all` | Member | Итоги тура: все участники с очками за завершённые матчи дня `[{user_id, nickname, avatar_url, points, exact_count, predictions_count, match_count}]`; пропущенный прогноз = 0. Сортировка: очки → точные → ник. Учитывает симуляцию |
 
 ### Спецпрогнозы — `/rooms/{id}/special-prediction`
 

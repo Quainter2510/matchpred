@@ -4,7 +4,7 @@ import { useAuth } from "../store/auth";
 import { useViewAs } from "../store/viewAs";
 import { formatTime, isPast } from "../utils/dates";
 import { formatStage } from "../utils/stage";
-import { classifyPrediction, HitKind } from "../utils/scoring";
+import { classifyPrediction, HIT_BADGE, HitKind } from "../utils/scoring";
 import Countdown from "./Countdown";
 import MultiplierBadge from "./MultiplierBadge";
 import TeamName from "./TeamName";
@@ -45,12 +45,6 @@ const CARD_TINT: Record<HitKind, string> = {
   miss: "!border-rose-200 !bg-rose-50/60",
 };
 
-const BADGE_TINT: Record<HitKind, string> = {
-  exact: "bg-emerald-100 text-emerald-700",
-  diff: "bg-sky-100 text-sky-700",
-  outcome: "bg-amber-100 text-amber-800",
-  miss: "bg-rose-100 text-rose-700",
-};
 
 export function LiveBadge() {
   return (
@@ -126,7 +120,7 @@ export default function MatchCard({ match, roomId }: { match: Match; roomId: str
           {p.points_awarded != null && (
             <span
               className={`rounded px-2 py-0.5 text-lg font-bold tabular-nums ${
-                kind ? BADGE_TINT[kind] : "bg-emerald-100 text-emerald-700"
+                kind ? HIT_BADGE[kind] : "bg-emerald-100 text-emerald-700"
               }`}
             >
               +{p.points_awarded}

@@ -36,3 +36,16 @@ class TourPointsOut(BaseModel):
     date: date
     points: int
     exact_count: int
+
+
+class TourPlayerOut(BaseModel):
+    """Строка итогов тура: очки участника за все завершённые матчи дня
+    (пропущенные прогнозы дают 0)."""
+
+    user_id: uuid.UUID
+    nickname: str
+    avatar_url: str | None = None
+    points: int
+    exact_count: int
+    predictions_count: int
+    match_count: int
