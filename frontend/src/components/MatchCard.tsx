@@ -49,7 +49,10 @@ export default function MatchCard({ match, roomId }: { match: Match; roomId: str
           ) : finished ? (
             "Завершён"
           ) : (
-            "Идёт/закрыт"
+            <span className="inline-flex items-center gap-1">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-red-600" />
+              Идёт
+            </span>
           )}
         </span>
       </div>

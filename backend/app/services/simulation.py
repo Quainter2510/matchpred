@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import Depends, Request
 from sqlalchemy import select
@@ -31,6 +31,10 @@ from app.models import Match, Prediction, Room, SpecialPrediction, User
 from app.services.scoring import score_prediction
 
 SIM_HEADER = "X-Sim-Now"
+
+# Сколько матч «играется» в симулированном мире: от kickoff до kickoff + 2 часа
+# статус live (очки не начисляются), после — finished.
+MATCH_DURATION = timedelta(hours=2)
 
 
 @dataclass(frozen=True)
@@ -76,17 +80,29 @@ def fake_score(match_id: uuid.UUID) -> tuple[int, int]:
 def effective_result(match: Match, sim: SimContext) -> tuple[str, int | None, int | None]:
     """(status, home_ft, away_ft) at the simulated moment.
 
-    A real final score always wins. A match that has kicked off by sim_now
-    becomes 'finished': a live match's current score is taken as final, a
-    scheduled one gets a fake score. Matches kicking off after sim_now are
-    returned unchanged.
+    A real final score always wins. A match that kicked off within the last
+    MATCH_DURATION is 'live' (its fake score grows with the elapsed time, a
+    real live score is kept as-is); after MATCH_DURATION it is 'finished'
+    with the fake (or last known) score. Matches kicking off after sim_now
+    are returned unchanged. Points are only ever awarded for 'finished'.
     """
     if not sim.active or match.kickoff_at > sim.now:
         return match.status, match.home_score_ft, match.away_score_ft
+    if match.status == "finished" and match.home_score_ft is not None:
+        return "finished", match.home_score_ft, match.away_score_ft
+
+    elapsed = sim.now - match.kickoff_at
+    final_home, final_away = fake_score(match.id)
+    if elapsed < MATCH_DURATION:
+        # Матч ещё идёт: реальный live-счёт сохраняем, иначе фейковый счёт
+        # «растёт» пропорционально сыгранному времени (в начале 0:0).
+        if match.home_score_ft is not None and match.away_score_ft is not None:
+            return "live", match.home_score_ft, match.away_score_ft
+        fraction = elapsed / MATCH_DURATION
+        return "live", int(final_home * fraction), int(final_away * fraction)
     if match.home_score_ft is not None and match.away_score_ft is not None:
         return "finished", match.home_score_ft, match.away_score_ft
-    home, away = fake_score(match.id)
-    return "finished", home, away
+    return "finished", final_home, final_away
 
 
 def points_for(

@@ -1,9 +1,27 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { api } from "../api/endpoints";
+import { api, PlayerPrediction } from "../api/endpoints";
 import { LiveBadge } from "../components/MatchCard";
 import MultiplierBadge from "../components/MultiplierBadge";
 import TeamName from "../components/TeamName";
+
+// Очки начислены → сортируем по убыванию (без очков — в конец, по нику);
+// подсветка строки по результату: точный счёт — зелёная, есть очки — янтарная,
+// промах — красная, матч не завершён — без подсветки.
+function byPoints(a: PlayerPrediction, b: PlayerPrediction): number {
+  const ap = a.points_awarded ?? -1;
+  const bp = b.points_awarded ?? -1;
+  if (bp !== ap) return bp - ap;
+  if (!!b.is_exact !== !!a.is_exact) return b.is_exact ? 1 : -1;
+  return a.nickname.localeCompare(b.nickname, "ru");
+}
+
+function rowTint(p: PlayerPrediction): string {
+  if (p.points_awarded == null) return "";
+  if (p.is_exact) return "bg-emerald-50";
+  if (p.points_awarded > 0) return "bg-amber-50";
+  return "bg-red-50";
+}
 
 export default function MatchPredictions() {
   const { roomId, id } = useParams<{ roomId: string; id: string }>();
@@ -57,8 +75,8 @@ export default function MatchPredictions() {
               </tr>
             </thead>
             <tbody>
-              {(preds.data || []).map((p) => (
-                <tr key={p.user_id} className="border-b">
+              {[...(preds.data || [])].sort(byPoints).map((p) => (
+                <tr key={p.user_id} className={`border-b ${rowTint(p)}`}>
                   <td className="flex items-center gap-2 py-2">
                     {p.avatar_url ? (
                       <img src={p.avatar_url} className="h-6 w-6 rounded-full" />

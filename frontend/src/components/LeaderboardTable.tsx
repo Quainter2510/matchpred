@@ -62,7 +62,6 @@ export default function LeaderboardTable({
   entries,
   roomId,
   started = false,
-  isAdmin = false,
 }: {
   entries: LeaderboardEntry[];
   roomId: string;
@@ -70,8 +69,9 @@ export default function LeaderboardTable({
   isAdmin?: boolean;
 }) {
   const me = useAuth((s) => s.user);
-  // Participation column hides for players once the tournament starts; admins keep it.
-  const showParticipation = !started || isAdmin;
+  // Колонка «участие подтверждено» нужна только до старта турнира — после
+  // начала первого матча пропадает у всех (галочки остаются в админке комнаты).
+  const showParticipation = !started;
 
   if (!entries.length)
     return <div className="text-slate-500">Пока нет участников.</div>;

@@ -78,9 +78,21 @@ def test_future_match_unchanged():
     assert effective_result(m, sim) == ("scheduled", None, None)
 
 
-def test_kicked_off_match_gets_fake_final_score():
+def test_just_kicked_off_match_is_live_from_zero():
+    """В первые минуты матч идёт (live) и счёт начинается с 0:0 — очков нет."""
     sim = SimContext(now=NOW)
-    m = make_match(kickoff_at=NOW - timedelta(hours=1))
+    m = make_match(kickoff_at=NOW - timedelta(minutes=5))
+    status, home, away = effective_result(m, sim)
+    assert status == "live"
+    final_home, final_away = fake_score(m.id)
+    assert 0 <= home <= final_home and 0 <= away <= final_away
+    # очки за live-матч не начисляются
+    assert points_for(home, away, m, make_room(), sim) == (None, None)
+
+
+def test_match_finishes_after_duration():
+    sim = SimContext(now=NOW)
+    m = make_match(kickoff_at=NOW - timedelta(hours=3))
     status, home, away = effective_result(m, sim)
     assert status == "finished"
     assert (home, away) == fake_score(m.id)
@@ -94,9 +106,15 @@ def test_real_result_always_wins():
     assert effective_result(m, sim) == ("finished", 2, 1)
 
 
-def test_live_score_taken_as_final():
+def test_real_live_score_kept_while_playing():
     sim = SimContext(now=NOW)
     m = make_match(kickoff_at=NOW - timedelta(minutes=30), status="live", home=1, away=0)
+    assert effective_result(m, sim) == ("live", 1, 0)
+
+
+def test_real_live_score_becomes_final_after_duration():
+    sim = SimContext(now=NOW)
+    m = make_match(kickoff_at=NOW - timedelta(hours=3), status="live", home=1, away=0)
     assert effective_result(m, sim) == ("finished", 1, 0)
 
 
@@ -108,8 +126,12 @@ def test_inactive_sim_returns_reality():
 # ---------------- points_for ----------------
 def test_points_none_until_simulated_finish():
     sim = SimContext(now=NOW)
+    # будущий матч
     m = make_match(kickoff_at=NOW + timedelta(hours=1))
     assert points_for(1, 0, m, make_room(), sim) == (None, None)
+    # идущий матч (live-окно) — очков тоже ещё нет
+    m_live = make_match(kickoff_at=NOW - timedelta(minutes=30))
+    assert points_for(1, 0, m_live, make_room(), sim) == (None, None)
 
 
 def test_points_use_room_rules_and_real_result():
@@ -142,7 +164,7 @@ def test_points_apply_multiplier_and_zero_voids_exact():
 
 def test_points_for_fake_result_consistent_with_effective():
     sim = SimContext(now=NOW)
-    m = make_match(kickoff_at=NOW - timedelta(hours=1))
+    m = make_match(kickoff_at=NOW - timedelta(hours=3))
     _, home, away = effective_result(m, sim)
     points, is_exact = points_for(home, away, m, make_room(), sim)
     assert (points, is_exact) == (5, True)
