@@ -19,5 +19,3 @@ dist/
 backup.sql
 
 .claude/
-
-*.md
