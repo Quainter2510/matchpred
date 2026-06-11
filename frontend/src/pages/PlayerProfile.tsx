@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
-import { api, PlayerProfile as Profile, PlayerProfileMatch, RoomScoring } from "../api/endpoints";
+import { api, PlayerProfileMatch } from "../api/endpoints";
 import TeamName from "../components/TeamName";
 import { formatDate, formatTime } from "../utils/dates";
 import { formatStage } from "../utils/stage";
+import { classifyPrediction, HIT_CARD } from "../utils/scoring";
 
 function Avatar({ url, nick, size }: { url: string | null; nick: string; size: string }) {
   return url ? (
@@ -16,14 +17,21 @@ function Avatar({ url, nick, size }: { url: string | null; nick: string; size: s
   );
 }
 
-// Colour of a match row by points earned (uses the room's own point values).
-function rowClass(m: PlayerProfileMatch, s: RoomScoring | null | undefined): string {
-  if (m.points_awarded == null) return "border-slate-200 bg-white";
-  if (m.is_exact || (s && m.points_awarded >= s.points_exact))
-    return "border-emerald-300 bg-emerald-50";
-  if (s && m.points_awarded === s.points_diff) return "border-sky-300 bg-sky-50";
-  if (m.points_awarded > 0) return "border-amber-300 bg-amber-50";
-  return "border-rose-200 bg-rose-50";
+// Цвет строки матча — единая схема по категории попадания (см. utils/scoring):
+// сравниваем счета напрямую, поэтому коэффициенты и правила комнаты не ломают
+// классификацию.
+function rowClass(m: PlayerProfileMatch): string {
+  if (
+    m.points_awarded == null ||
+    m.predicted_home == null ||
+    m.predicted_away == null ||
+    m.home_score_ft == null ||
+    m.away_score_ft == null
+  )
+    return "border-slate-200 bg-white";
+  return HIT_CARD[
+    classifyPrediction(m.predicted_home, m.predicted_away, m.home_score_ft, m.away_score_ft)
+  ];
 }
 
 function score(h: number | null, a: number | null): string {
@@ -40,13 +48,6 @@ export default function PlayerProfile() {
     queryFn: () => api.playerProfile(roomId!, userId!),
     enabled: !!roomId && !!userId,
   });
-  const room = useQuery({
-    queryKey: ["room", roomId],
-    queryFn: () => api.roomDetail(roomId!),
-    enabled: !!roomId,
-  });
-  const scoring = room.data?.scoring;
-
   const firstUpcoming = data?.matches.find((m) => !m.started);
 
   // Shrink the header once the user scrolls past the big profile block.
@@ -187,7 +188,7 @@ export default function PlayerProfile() {
               <div
                 key={m.match_id}
                 id={`m-${m.match_id}`}
-                className={`scroll-mt-28 rounded-lg border p-3 ${rowClass(m, scoring)}`}
+                className={`scroll-mt-28 rounded-lg border p-3 ${rowClass(m)}`}
               >
                 <div className="flex items-center justify-between text-xs text-slate-500">
                   <span>

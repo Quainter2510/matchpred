@@ -41,6 +41,8 @@ export interface MatchDay {
   my_predictions_count: number;
   first_kickoff_at: string;
   multiplier: number | null;
+  finished_count: number;
+  my_points: number;
 }
 
 export interface MyPrediction {

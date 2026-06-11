@@ -12,3 +12,36 @@ export function previewPoints(
   if (Math.sign(pd) === Math.sign(ad)) return 1;
   return 0;
 }
+
+// Категория попадания прогноза — не зависит от очков комнаты и коэффициентов,
+// сравниваются сами счета. Единая цветовая схема по всему приложению:
+// точный — зелёный, разница — синий, исход — янтарный, промах — красный.
+export type HitKind = "exact" | "diff" | "outcome" | "miss";
+
+export function classifyPrediction(
+  ph: number,
+  pa: number,
+  ah: number,
+  aa: number
+): HitKind {
+  if (ph === ah && pa === aa) return "exact";
+  const pd = ph - pa;
+  const ad = ah - aa;
+  if (pd === ad) return "diff";
+  if (Math.sign(pd) === Math.sign(ad)) return "outcome";
+  return "miss";
+}
+
+export const HIT_BG: Record<HitKind, string> = {
+  exact: "bg-emerald-50",
+  diff: "bg-sky-50",
+  outcome: "bg-amber-50",
+  miss: "bg-rose-50",
+};
+
+export const HIT_CARD: Record<HitKind, string> = {
+  exact: "border-emerald-300 bg-emerald-50",
+  diff: "border-sky-300 bg-sky-50",
+  outcome: "border-amber-300 bg-amber-50",
+  miss: "border-rose-200 bg-rose-50",
+};

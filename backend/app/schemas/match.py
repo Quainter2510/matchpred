@@ -37,6 +37,10 @@ class MatchDay(BaseModel):
     # Коэффициент тура: значение, если у всех матчей дня он одинаковый,
     # иначе None (смешанный — бейджи только на отдельных матчах).
     multiplier: int | None = 1
+    # Сколько матчей дня завершено и мои очки за них (тур идёт, пока
+    # finished_count < match_count).
+    finished_count: int = 0
+    my_points: int = 0
 
 
 class MultiplierUpdate(BaseModel):

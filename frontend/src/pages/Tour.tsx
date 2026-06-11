@@ -18,7 +18,7 @@ export default function Tour() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <Link to={`/room/${roomId}`} className="btn-ghost">
+        <Link to={`/room/${roomId}?tab=predictions`} className="btn-ghost">
           ← Назад
         </Link>
         <h1 className="text-2xl font-bold">{date && formatDate(date)}</h1>

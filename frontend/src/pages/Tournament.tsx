@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api, MatchDay, RoomScoring } from "../api/endpoints";
 import LeaderboardTable from "../components/LeaderboardTable";
 import MultiplierBadge from "../components/MultiplierBadge";
@@ -81,7 +81,14 @@ export default function Tournament() {
   const isAdmin = me?.system_role === "superadmin" || isRoomAdmin;
   const archived = room.data && !room.data.is_active;
   const started = !!room.data?.first_match_at && isPast(room.data.first_match_at);
-  const [tab, setTab] = useState<"table" | "predictions" | "wc">("table");
+  // Активная вкладка живёт в URL (?tab=…), чтобы «назад» из тура/матча
+  // возвращал на ту же вкладку, а не на таблицу по умолчанию.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const rawTab = searchParams.get("tab");
+  const tab: "table" | "predictions" | "wc" =
+    rawTab === "predictions" || rawTab === "wc" ? rawTab : "table";
+  const setTab = (id: typeof tab) =>
+    setSearchParams(id === "table" ? {} : { tab: id }, { replace: true });
   const [showRules, setShowRules] = useState(false);
   const rulesText = room.data?.rules_text || defaultRules(room.data?.scoring);
 
@@ -197,24 +204,40 @@ export default function Tournament() {
               <div className="grid gap-2 sm:grid-cols-2">
                 {days.data.map((d) => {
                   const st = dayStatus(d);
+                  const tourStarted = isPast(d.first_kickoff_at);
+                  const tourLive = tourStarted && d.finished_count < d.match_count;
                   return (
                     <Link
                       key={d.date}
                       to={`/room/${roomId}/tour/${d.date}`}
-                      className={`flex items-center justify-between rounded-lg border p-3 transition ${st.cls}`}
+                      className={`flex items-center justify-between gap-2 rounded-lg border p-3 transition ${st.cls}`}
                     >
-                      <span className="flex flex-col">
+                      <span className="flex min-w-0 flex-col">
                         <span className="flex items-center gap-1.5 font-medium">
                           {formatDate(d.date)}
                           {d.multiplier != null && <MultiplierBadge value={d.multiplier} />}
+                        </span>
+                        <span className="text-xs text-slate-500">
+                          {d.my_predictions_count}/{d.match_count} прогнозов
                         </span>
                         {st.label && (
                           <span className={`text-xs ${st.labelCls}`}>{st.label}</span>
                         )}
                       </span>
-                      <span className="text-sm text-slate-500">
-                        {d.my_predictions_count}/{d.match_count} прогнозов
-                      </span>
+                      {/* Очки за тур: крупно; красная точка — тур ещё идёт. */}
+                      {tourStarted && (
+                        <span className="flex shrink-0 items-center gap-1.5">
+                          {tourLive && (
+                            <span
+                              className="h-2 w-2 animate-pulse rounded-full bg-red-600"
+                              title="Тур ещё идёт"
+                            />
+                          )}
+                          <span className="text-2xl font-extrabold tabular-nums text-slate-700">
+                            +{d.my_points}
+                          </span>
+                        </span>
+                      )}
                     </Link>
                   );
                 })}

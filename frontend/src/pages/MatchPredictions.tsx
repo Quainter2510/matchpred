@@ -1,13 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { api, PlayerPrediction } from "../api/endpoints";
+import { api, Match, PlayerPrediction } from "../api/endpoints";
 import { LiveBadge } from "../components/MatchCard";
 import MultiplierBadge from "../components/MultiplierBadge";
 import TeamName from "../components/TeamName";
+import { classifyPrediction, HIT_BG } from "../utils/scoring";
 
-// Очки начислены → сортируем по убыванию (без очков — в конец, по нику);
-// подсветка строки по результату: точный счёт — зелёная, есть очки — янтарная,
-// промах — красная, матч не завершён — без подсветки.
+// Очки начислены → сортируем по убыванию (без очков — в конец, по нику).
 function byPoints(a: PlayerPrediction, b: PlayerPrediction): number {
   const ap = a.points_awarded ?? -1;
   const bp = b.points_awarded ?? -1;
@@ -16,11 +15,26 @@ function byPoints(a: PlayerPrediction, b: PlayerPrediction): number {
   return a.nickname.localeCompare(b.nickname, "ru");
 }
 
-function rowTint(p: PlayerPrediction): string {
-  if (p.points_awarded == null) return "";
-  if (p.is_exact) return "bg-emerald-50";
-  if (p.points_awarded > 0) return "bg-amber-50";
-  return "bg-red-50";
+// Единая цветовая схема: точный — зелёный, разница — синий, исход — янтарный,
+// промах — красный. Категория считается по счёту, а не по очкам, поэтому
+// не зависит от правил комнаты и коэффициента матча.
+function rowTint(p: PlayerPrediction, m: Match | undefined): string {
+  if (
+    p.points_awarded == null ||
+    !m ||
+    m.status !== "finished" ||
+    m.home_score_ft == null ||
+    m.away_score_ft == null
+  )
+    return "";
+  return HIT_BG[
+    classifyPrediction(
+      p.predicted_home,
+      p.predicted_away,
+      m.home_score_ft,
+      m.away_score_ft
+    )
+  ];
 }
 
 export default function MatchPredictions() {
@@ -76,7 +90,7 @@ export default function MatchPredictions() {
             </thead>
             <tbody>
               {[...(preds.data || [])].sort(byPoints).map((p) => (
-                <tr key={p.user_id} className={`border-b ${rowTint(p)}`}>
+                <tr key={p.user_id} className={`border-b ${rowTint(p, match.data)}`}>
                   <td className="flex items-center gap-2 py-2">
                     {p.avatar_url ? (
                       <img src={p.avatar_url} className="h-6 w-6 rounded-full" />

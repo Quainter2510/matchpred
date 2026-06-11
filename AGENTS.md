@@ -348,7 +348,7 @@ frontend/
 
 | Метод | Путь | Доступ | Описание |
 |-------|------|--------|---------|
-| GET | `/rooms/{id}/matches/days` | Member | `[{date, match_count, my_predictions_count, first_kickoff_at, multiplier}]` (multiplier = общий для дня или null) |
+| GET | `/rooms/{id}/matches/days` | Member | `[{date, match_count, my_predictions_count, first_kickoff_at, multiplier, finished_count, my_points}]` (multiplier = общий для дня или null; my_points — мои очки за завершённые матчи дня) |
 | GET | `/rooms/{id}/matches?date=` | Member | Матчи на дату + мой прогноз в этой комнате |
 | GET | `/rooms/{id}/matches/{mid}` | Member | Один матч + мой прогноз |
 | GET | `/rooms/{id}/matches/{mid}/predictions` | Member | Прогнозы всех в комнате. 403 до kickoff (RAdmin — всегда) |

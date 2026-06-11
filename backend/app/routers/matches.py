@@ -2,7 +2,7 @@ import uuid
 from datetime import date as date_type
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -79,43 +79,73 @@ def _to_out(
 @room_router.get("/days", response_model=list[MatchDay])
 async def match_days(
     ctx: RoomContext = Depends(require_room_member),
+    sim: SimContext = Depends(get_sim),
     db: AsyncSession = Depends(get_db),
 ):
-    rows = (
-        await db.execute(
-            select(
-                Match.match_date,
-                func.count(),
-                func.min(Match.kickoff_at),
-                func.min(Match.points_multiplier),
-                func.max(Match.points_multiplier),
-            )
-            .group_by(Match.match_date)
-            .order_by(Match.match_date)
-        )
-    ).all()
-    my = dict(
-        (
+    """Туры (дни) с моими очками: my_points — сумма за завершённые матчи дня,
+    finished_count позволяет фронту показать «тур ещё идёт»."""
+    matches = (
+        await db.execute(select(Match).order_by(Match.kickoff_at))
+    ).scalars().all()
+    my_preds = {
+        p.match_id: p
+        for p in (
             await db.execute(
-                select(Match.match_date, func.count())
-                .join(Prediction, Prediction.match_id == Match.id)
-                .where(
+                select(Prediction).where(
                     Prediction.user_id == ctx.user.id,
                     Prediction.room_id == ctx.room.id,
                 )
-                .group_by(Match.match_date)
             )
-        ).all()
-    )
+        ).scalars().all()
+    }
+
+    days: dict = {}
+    for m in matches:
+        d = days.setdefault(
+            m.match_date,
+            {
+                "count": 0,
+                "mine": 0,
+                "first": m.kickoff_at,  # matches идут по kickoff — первый и есть min
+                "mult_min": m.points_multiplier,
+                "mult_max": m.points_multiplier,
+                "finished": 0,
+                "points": 0,
+            },
+        )
+        d["count"] += 1
+        d["mult_min"] = min(d["mult_min"], m.points_multiplier)
+        d["mult_max"] = max(d["mult_max"], m.points_multiplier)
+        pred = my_preds.get(m.id)
+        if pred:
+            d["mine"] += 1
+
+        if sim.active:
+            status, home, away = effective_result(m, sim)
+        else:
+            status, home, away = m.status, m.home_score_ft, m.away_score_ft
+        if status == "finished" and home is not None and away is not None:
+            d["finished"] += 1
+            if pred:
+                if sim.active:
+                    points, _ = points_for(
+                        pred.predicted_home, pred.predicted_away, m, ctx.room, sim
+                    )
+                else:
+                    points = pred.points_awarded
+                d["points"] += points or 0
+
     return [
         MatchDay(
-            date=d,
-            match_count=c,
-            my_predictions_count=my.get(d, 0),
-            first_kickoff_at=first,
-            multiplier=mn if mn == mx else None,
+            date=date,
+            match_count=d["count"],
+            my_predictions_count=d["mine"],
+            first_kickoff_at=d["first"],
+            multiplier=d["mult_min"] if d["mult_min"] == d["mult_max"] else None,
+            finished_count=d["finished"],
+            my_points=d["points"],
         )
-        for d, c, first, mn, mx in rows
+        for date, d in sorted(days.items())
     ]
 
 
