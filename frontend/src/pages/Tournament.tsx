@@ -78,12 +78,12 @@ export default function Tournament() {
   });
 
   const me = useAuth((st) => st.user);
-  // Режим «как обычный пользователь» действует только у суперадмина — у
-  // обычного админа комнаты случайный флаг в localStorage ничего не прячет.
-  const asPlayer =
-    useViewAs((s) => s.asPlayer) && me?.system_role === "superadmin";
-  // В режиме игрока админ-кнопки спрятаны (бэкенд в этом режиме всё равно
-  // ответит 403 на управление комнатой).
+  // Суперадмин по умолчанию — в режиме игрока: админ-кнопки появляются только
+  // при включённом «режиме суперадмина» (бэкенд в режиме игрока всё равно
+  // ответит 403 на управление комнатой). Обычных админов комнат это не
+  // касается — у них прав суперадмина нет.
+  const adminMode = useViewAs((s) => s.adminMode);
+  const asPlayer = me?.system_role === "superadmin" && !adminMode;
   const isRoomAdmin = room.data?.my_role === "admin" && !asPlayer;
   const isAdmin = (me?.system_role === "superadmin" && !asPlayer) || isRoomAdmin;
   const archived = room.data && !room.data.is_active;

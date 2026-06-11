@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../store/auth";
-import { useViewAs } from "../store/viewAs";
 
 // «Соревнования» ведёт на "/" — корневой redirect открывает последнее
 // посещённое соревнование (или хаб, если выбора нет).
@@ -12,18 +11,15 @@ const nav = [
 
 export default function Sidebar() {
   const { user, isAdmin, logout } = useAuth();
-  const asPlayer = useViewAs((s) => s.asPlayer);
   const location = useLocation();
   const navigate = useNavigate();
   const [menu, setMenu] = useState(false);
 
   // Аноним в лобби видит только «Соревнования» и кнопку «Войти».
-  // В режиме «как обычный пользователь» пункт «Админ» спрятан (выход —
-  // через баннер сверху).
+  // Пункт «Админ» виден всегда (для админов) — в том числе суперадмину в
+  // режиме игрока: там живёт чекбокс включения полных прав.
   const items = user ? [...nav] : [nav[0]];
-  const hideAdmin = asPlayer && user?.system_role === "superadmin";
-  if (user && isAdmin() && !hideAdmin)
-    items.push({ to: "/admin", label: "Админ", icon: "⚙️" });
+  if (user && isAdmin()) items.push({ to: "/admin", label: "Админ", icon: "⚙️" });
 
   const handleLogout = async () => {
     await logout();

@@ -62,8 +62,9 @@ export function LiveBadge() {
 }
 
 export default function MatchCard({ match, roomId }: { match: Match; roomId: string }) {
-  const asPlayer = useViewAs((s) => s.asPlayer);
-  const isSuper = useAuth((s) => s.isSuperadmin()) && !asPlayer;
+  // Кнопка «Итоги» — только при включённом режиме суперадмина.
+  const adminMode = useViewAs((s) => s.adminMode);
+  const isSuper = useAuth((s) => s.isSuperadmin()) && adminMode;
   const started = isPast(match.kickoff_at);
   const finished = match.status === "finished";
   const live = match.status === "live";
