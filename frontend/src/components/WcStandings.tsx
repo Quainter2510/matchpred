@@ -37,7 +37,10 @@ function GroupTable({ group }: { group: GroupStanding }) {
   return (
     <div className="card overflow-x-auto">
       <h3 className="mb-2 font-semibold">Группа {group.name}</h3>
-      <table className="w-full text-xs sm:text-sm">
+      {/* min-w: на телефоне колонка с названием сжималась до нуля — теперь
+          вместо этого таблица прокручивается горизонтально (overflow-x-auto
+          на карточке). */}
+      <table className="w-full min-w-[26rem] text-xs sm:text-sm">
         <thead>
           <tr className="border-b text-slate-500">
             <th className="py-1 pr-1 text-left">Команда</th>
