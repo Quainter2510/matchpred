@@ -76,7 +76,8 @@ class PlayerPredictionOut(BaseModel):
     user_id: uuid.UUID
     nickname: str
     avatar_url: str | None = None
-    predicted_home: int
-    predicted_away: int
+    # null — участник не сделал прогноз (в списке все участники комнаты).
+    predicted_home: int | None = None
+    predicted_away: int | None = None
     points_awarded: int | None = None
     is_exact: bool | None = None

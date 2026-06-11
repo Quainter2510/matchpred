@@ -6,11 +6,15 @@ import MultiplierBadge from "../components/MultiplierBadge";
 import TeamName from "../components/TeamName";
 import { classifyPrediction, HIT_BG } from "../utils/scoring";
 
-// Очки начислены → сортируем по убыванию (без очков — в конец, по нику).
+// Очки начислены → сортируем по убыванию; сделавшие прогноз выше тех, кто
+// без прогноза (у них прочерки); внутри — по нику.
 function byPoints(a: PlayerPrediction, b: PlayerPrediction): number {
   const ap = a.points_awarded ?? -1;
   const bp = b.points_awarded ?? -1;
   if (bp !== ap) return bp - ap;
+  const aHas = a.predicted_home != null;
+  const bHas = b.predicted_home != null;
+  if (aHas !== bHas) return aHas ? -1 : 1;
   if (!!b.is_exact !== !!a.is_exact) return b.is_exact ? 1 : -1;
   return a.nickname.localeCompare(b.nickname, "ru");
 }
@@ -20,6 +24,8 @@ function byPoints(a: PlayerPrediction, b: PlayerPrediction): number {
 // не зависит от правил комнаты и коэффициента матча.
 function rowTint(p: PlayerPrediction, m: Match | undefined): string {
   if (
+    p.predicted_home == null ||
+    p.predicted_away == null ||
     p.points_awarded == null ||
     !m ||
     m.status !== "finished" ||
@@ -107,7 +113,11 @@ export default function MatchPredictions() {
                     </Link>
                   </td>
                   <td className="text-center font-medium">
-                    {p.predicted_home}:{p.predicted_away}
+                    {p.predicted_home != null && p.predicted_away != null ? (
+                      `${p.predicted_home}:${p.predicted_away}`
+                    ) : (
+                      <span className="text-slate-300">—</span>
+                    )}
                   </td>
                   <td className="text-right">
                     {p.points_awarded != null ? (

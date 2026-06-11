@@ -2,7 +2,7 @@ import uuid
 from datetime import date as date_type
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -237,19 +237,28 @@ async def match_predictions(
             status.HTTP_403_FORBIDDEN, "Predictions hidden until kickoff"
         )
 
+    # Все участники комнаты: не сделавшие прогноз тоже в списке (поля null —
+    # фронт показывает прочерки).
     rows = (
         await db.execute(
-            select(Prediction, User)
-            .join(User, User.id == Prediction.user_id)
-            .where(
-                Prediction.match_id == match_id,
-                Prediction.room_id == ctx.room.id,
+            select(RoomMember, User, Prediction)
+            .join(User, User.id == RoomMember.user_id)
+            .outerjoin(
+                Prediction,
+                and_(
+                    Prediction.match_id == match_id,
+                    Prediction.room_id == ctx.room.id,
+                    Prediction.user_id == RoomMember.user_id,
+                ),
             )
+            .where(RoomMember.room_id == ctx.room.id)
         )
     ).all()
     out = []
-    for p, u in rows:
-        if sim.active:
+    for _member, u, p in rows:
+        if p is None:
+            points, is_exact = None, None
+        elif sim.active:
             points, is_exact = points_for(
                 p.predicted_home, p.predicted_away, match, ctx.room, sim
             )
@@ -260,8 +269,8 @@ async def match_predictions(
                 user_id=u.id,
                 nickname=u.nickname,
                 avatar_url=u.avatar_url,
-                predicted_home=p.predicted_home,
-                predicted_away=p.predicted_away,
+                predicted_home=p.predicted_home if p else None,
+                predicted_away=p.predicted_away if p else None,
                 points_awarded=points,
                 is_exact=is_exact,
             )

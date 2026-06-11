@@ -75,8 +75,9 @@ export interface PlayerPrediction {
   user_id: string;
   nickname: string;
   avatar_url: string | null;
-  predicted_home: number;
-  predicted_away: number;
+  // null — участник не сделал прогноз (список включает всех участников).
+  predicted_home: number | null;
+  predicted_away: number | null;
   points_awarded: number | null;
   is_exact: boolean | null;
 }

@@ -353,7 +353,7 @@ frontend/
 | GET | `/rooms/{id}/matches/days` | Member | `[{date, match_count, my_predictions_count, first_kickoff_at, multiplier, finished_count, my_points, members_filled, members_total}]` (multiplier = общий для дня или null; my_points — мои очки за завершённые матчи дня; members_* — заполняемость тура, только для админов комнаты, иначе null) |
 | GET | `/rooms/{id}/matches?date=` | Member | Матчи на дату + мой прогноз в этой комнате |
 | GET | `/rooms/{id}/matches/{mid}` | Member | Один матч + мой прогноз |
-| GET | `/rooms/{id}/matches/{mid}/predictions` | Member | Прогнозы всех в комнате. 403 до kickoff (RAdmin — всегда) |
+| GET | `/rooms/{id}/matches/{mid}/predictions` | Member | **Все участники комнаты**; у не сделавших прогноз `predicted_*` = null (фронт показывает прочерки). 403 до kickoff (RAdmin — всегда) |
 
 ### Матчи (глобальный админ) — `/matches`
 
