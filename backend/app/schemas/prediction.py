@@ -1,5 +1,5 @@
 import uuid
-from datetime import date
+from datetime import date, datetime
 
 from pydantic import BaseModel, Field
 
@@ -38,9 +38,27 @@ class TourPointsOut(BaseModel):
     exact_count: int
 
 
+class TourPlayerMatch(BaseModel):
+    """Матч тура в раскрывающемся списке игрока. predicted_* = null, если
+    прогноза нет ИЛИ он ещё скрыт (чужой прогноз до начала матча)."""
+
+    match_id: uuid.UUID
+    kickoff_at: datetime
+    home_team: str
+    away_team: str
+    status: str
+    home_score: int | None = None
+    away_score: int | None = None
+    started: bool
+    predicted_home: int | None = None
+    predicted_away: int | None = None
+    points_awarded: int | None = None
+    is_exact: bool | None = None
+
+
 class TourPlayerOut(BaseModel):
     """Строка итогов тура: очки участника за все завершённые матчи дня
-    (пропущенные прогнозы дают 0)."""
+    (пропущенные прогнозы дают 0) + раскрывающийся список матчей."""
 
     user_id: uuid.UUID
     nickname: str
@@ -49,3 +67,4 @@ class TourPlayerOut(BaseModel):
     exact_count: int
     predictions_count: int
     match_count: int
+    matches: list[TourPlayerMatch] = []

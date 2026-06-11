@@ -12,11 +12,12 @@ from app.schemas.prediction import (
     PredictionBatchRequest,
     PredictionBatchResponse,
     PredictionResult,
+    TourPlayerMatch,
     TourPlayerOut,
     TourPointsOut,
 )
 from app.services.predictions import set_prediction
-from app.services.simulation import SimContext, get_sim, points_for
+from app.services.simulation import SimContext, effective_result, get_sim, points_for
 
 router = APIRouter(prefix="/rooms/{room_id}/predictions", tags=["predictions"])
 
@@ -128,9 +129,15 @@ async def tour_leaderboard(
     db: AsyncSession = Depends(get_db),
 ):
     """Итоги тура: все участники комнаты с очками за завершённые матчи дня
-    (пропущенный прогноз = 0 очков). Сортировка: очки → точные → ник."""
+    (пропущенный прогноз = 0 очков) и раскрывающимся списком матчей.
+    Чужие прогнозы на не начавшиеся матчи скрыты (predicted_* = null);
+    свои и для админа комнаты — видны всегда. Сортировка: очки → точные → ник."""
     matches = (
-        await db.execute(select(Match).where(Match.match_date == tour_date))
+        await db.execute(
+            select(Match)
+            .where(Match.match_date == tour_date)
+            .order_by(Match.kickoff_at)
+        )
     ).scalars().all()
 
     preds: dict = {}  # (user_id, match_id) -> Prediction
@@ -153,23 +160,50 @@ async def tour_leaderboard(
         )
     ).all()
 
+    now = sim.effective_now()
     out = []
     for member, user in members:
         points = exact = predicted = 0
+        items: list[TourPlayerMatch] = []
         for m in matches:
             p = preds.get((user.id, m.id))
             if p is not None:
                 predicted += 1
-            if p is None:
-                continue
             if sim.active:
-                pts, is_exact = points_for(
-                    p.predicted_home, p.predicted_away, m, ctx.room, sim
-                )
+                status_, home, away = effective_result(m, sim)
             else:
-                pts, is_exact = p.points_awarded, p.is_exact
-            points += pts or 0
-            exact += 1 if is_exact else 0
+                status_, home, away = m.status, m.home_score_ft, m.away_score_ft
+            started = m.kickoff_at <= now
+            # Чужой прогноз до начала матча скрыт.
+            visible = p is not None and (
+                started or user.id == ctx.user.id or ctx.is_admin
+            )
+            pts = is_exact = None
+            if p is not None:
+                if sim.active:
+                    pts, is_exact = points_for(
+                        p.predicted_home, p.predicted_away, m, ctx.room, sim
+                    )
+                else:
+                    pts, is_exact = p.points_awarded, p.is_exact
+                points += pts or 0
+                exact += 1 if is_exact else 0
+            items.append(
+                TourPlayerMatch(
+                    match_id=m.id,
+                    kickoff_at=m.kickoff_at,
+                    home_team=m.home_team,
+                    away_team=m.away_team,
+                    status=status_,
+                    home_score=home,
+                    away_score=away,
+                    started=started,
+                    predicted_home=p.predicted_home if visible else None,
+                    predicted_away=p.predicted_away if visible else None,
+                    points_awarded=pts if visible else None,
+                    is_exact=is_exact if visible else None,
+                )
+            )
         out.append(
             TourPlayerOut(
                 user_id=user.id,
@@ -179,6 +213,7 @@ async def tour_leaderboard(
                 exact_count=exact,
                 predictions_count=predicted,
                 match_count=len(matches),
+                matches=items,
             )
         )
     out.sort(key=lambda t: (-t.points, -t.exact_count, t.nickname.lower()))

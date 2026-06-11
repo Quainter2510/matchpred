@@ -153,6 +153,22 @@ export interface PlayerProfile {
   matches: PlayerProfileMatch[];
 }
 
+export interface TourPlayerMatch {
+  match_id: string;
+  kickoff_at: string;
+  home_team: string;
+  away_team: string;
+  status: string;
+  home_score: number | null;
+  away_score: number | null;
+  started: boolean;
+  // null — прогноза нет ИЛИ чужой прогноз скрыт до начала матча.
+  predicted_home: number | null;
+  predicted_away: number | null;
+  points_awarded: number | null;
+  is_exact: boolean | null;
+}
+
 export interface TourPlayer {
   user_id: string;
   nickname: string;
@@ -161,6 +177,7 @@ export interface TourPlayer {
   exact_count: number;
   predictions_count: number;
   match_count: number;
+  matches: TourPlayerMatch[];
 }
 
 export interface TeamFormMatch {
