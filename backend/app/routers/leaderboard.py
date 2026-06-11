@@ -1,4 +1,5 @@
 import json
+import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends
@@ -14,11 +15,20 @@ from app.redis_client import (
     redis_client,
 )
 from app.schemas.leaderboard import LeaderboardEntry, MyLeaderboardEntry
+from app.services.simulation import SimContext, get_sim, room_sim_totals
 
 router = APIRouter(prefix="/rooms/{room_id}/leaderboard", tags=["leaderboard"])
 
 
-async def _compute(db: AsyncSession, room_id, started: bool) -> list[dict]:
+async def _compute(
+    db: AsyncSession,
+    room_id,
+    started: bool,
+    sim_totals: dict[uuid.UUID, tuple[int, int]] | None = None,
+) -> list[dict]:
+    """Build leaderboard entries. With sim_totals (simulation mode) the stored
+    member totals are replaced by the recomputed ones and the table is
+    re-sorted accordingly."""
     rows = (
         await db.execute(
             select(RoomMember, User, SpecialPrediction)
@@ -36,16 +46,30 @@ async def _compute(db: AsyncSession, room_id, started: bool) -> list[dict]:
             )
         )
     ).all()
+    if sim_totals is not None:
+        rows = sorted(
+            rows,
+            key=lambda row: (
+                -sim_totals.get(row[1].id, (0, 0))[0],
+                -sim_totals.get(row[1].id, (0, 0))[1],
+                row[1].nickname,
+            ),
+        )
     entries = []
     for place, (m, u, sp) in enumerate(rows, start=1):
+        total, exact = (
+            sim_totals.get(u.id, (0, 0))
+            if sim_totals is not None
+            else (m.total_points, m.exact_scores_count)
+        )
         entries.append(
             {
                 "place": place,
                 "user_id": str(u.id),
                 "nickname": u.nickname,
                 "avatar_url": u.avatar_url,
-                "total_points": m.total_points,
-                "exact_scores_count": m.exact_scores_count,
+                "total_points": total,
+                "exact_scores_count": exact,
                 "has_champion": bool(sp and sp.champion_team),
                 "has_scorer": bool(sp and sp.top_scorer_api_id),
                 "champion_correct": bool(sp and sp.champion_points),
@@ -75,27 +99,39 @@ async def _get_leaderboard(db: AsyncSession, room_id, started: bool) -> list[dic
     return entries
 
 
-def _started(ctx: RoomContext) -> bool:
-    return bool(
-        ctx.room.first_match_at
-        and datetime.now(timezone.utc) >= ctx.room.first_match_at
-    )
+def _started(ctx: RoomContext, sim: SimContext) -> bool:
+    now = sim.effective_now() if sim.active else datetime.now(timezone.utc)
+    return bool(ctx.room.first_match_at and now >= ctx.room.first_match_at)
+
+
+async def _entries(
+    db: AsyncSession, ctx: RoomContext, sim: SimContext
+) -> list[dict]:
+    started = _started(ctx, sim)
+    if sim.active:
+        # Simulated standings are computed in memory and bypass the Redis
+        # cache entirely (never stored, never read).
+        totals = await room_sim_totals(db, ctx.room, sim)
+        return await _compute(db, ctx.room.id, started, sim_totals=totals)
+    return await _get_leaderboard(db, ctx.room.id, started)
 
 
 @router.get("", response_model=list[LeaderboardEntry])
 async def leaderboard(
     ctx: RoomContext = Depends(require_room_member),
+    sim: SimContext = Depends(get_sim),
     db: AsyncSession = Depends(get_db),
 ):
-    return await _get_leaderboard(db, ctx.room.id, _started(ctx))
+    return await _entries(db, ctx, sim)
 
 
 @router.get("/me", response_model=MyLeaderboardEntry | None)
 async def leaderboard_me(
     ctx: RoomContext = Depends(require_room_member),
+    sim: SimContext = Depends(get_sim),
     db: AsyncSession = Depends(get_db),
 ):
-    entries = await _get_leaderboard(db, ctx.room.id, _started(ctx))
+    entries = await _entries(db, ctx, sim)
     for e in entries:
         if e["user_id"] == str(ctx.user.id):
             return e

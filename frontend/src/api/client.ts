@@ -1,4 +1,5 @@
 import axios from "axios";
+import { getSimNow } from "../store/sim";
 
 export const API_BASE =
   import.meta.env.VITE_API_BASE || "http://localhost:8000/api/v1";
@@ -23,6 +24,14 @@ export function getAccessToken() {
 client.interceptors.request.use((config) => {
   if (accessToken) {
     config.headers.Authorization = `Bearer ${accessToken}`;
+  }
+  // Режим симуляции: заголовок ставится на все запросы, включая мутации —
+  // бэкенд отклоняет мутации с ним (403), чтобы из «песочницы» нельзя было
+  // случайно изменить реальные данные. Авторизация (refresh/logout) должна
+  // работать и в симуляции, поэтому /auth не трогаем.
+  const simNow = getSimNow();
+  if (simNow && !(config.url || "").startsWith("/auth")) {
+    config.headers["X-Sim-Now"] = simNow;
   }
   return config;
 });

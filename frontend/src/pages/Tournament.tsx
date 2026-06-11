@@ -6,7 +6,7 @@ import LeaderboardTable from "../components/LeaderboardTable";
 import MultiplierBadge from "../components/MultiplierBadge";
 import SpecialPredictionCard from "./SpecialPredictionCard";
 import { useAuth } from "../store/auth";
-import { formatDate, isPast } from "../utils/dates";
+import { formatDate, isPast, nowMs } from "../utils/dates";
 
 const DAY_MS = 86400000;
 
@@ -30,7 +30,7 @@ function dayStatus(d: MatchDay): { cls: string; label: string; labelCls: string 
       label: "Прогноз пропущен",
       labelCls: "text-red-700",
     };
-  const msToStart = new Date(d.first_kickoff_at).getTime() - Date.now();
+  const msToStart = new Date(d.first_kickoff_at).getTime() - nowMs();
   if (msToStart <= 2 * DAY_MS)
     return {
       cls: "border-amber-300 bg-amber-50 hover:bg-amber-100",

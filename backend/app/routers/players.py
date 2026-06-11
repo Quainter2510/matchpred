@@ -9,6 +9,13 @@ from app.database import get_db
 from app.dependencies import RoomContext, require_room_member
 from app.models import Match, Prediction, RoomMember, SpecialPrediction, User
 from app.schemas.player import PlayerProfile, PlayerProfileMatch
+from app.services.simulation import (
+    SimContext,
+    effective_result,
+    get_sim,
+    points_for,
+    room_sim_totals,
+)
 
 router = APIRouter(prefix="/rooms/{room_id}/players", tags=["players"])
 
@@ -17,6 +24,7 @@ router = APIRouter(prefix="/rooms/{room_id}/players", tags=["players"])
 async def player_profile(
     uid: uuid.UUID,
     ctx: RoomContext = Depends(require_room_member),
+    sim: SimContext = Depends(get_sim),
     db: AsyncSession = Depends(get_db),
 ):
     room_id = ctx.room.id
@@ -25,10 +33,12 @@ async def player_profile(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Player not in this room")
     target = await db.get(User, uid)
 
+    sim_totals = await room_sim_totals(db, ctx.room, sim) if sim.active else None
+
     # Place in the room standings (same ordering as the leaderboard).
-    ordered = (
+    rows_order = (
         await db.execute(
-            select(RoomMember.user_id)
+            select(RoomMember, User.nickname)
             .join(User, User.id == RoomMember.user_id)
             .where(RoomMember.room_id == room_id)
             .order_by(
@@ -37,14 +47,24 @@ async def player_profile(
                 User.nickname.asc(),
             )
         )
-    ).scalars().all()
+    ).all()
+    if sim_totals is not None:
+        rows_order = sorted(
+            rows_order,
+            key=lambda row: (
+                -sim_totals.get(row[0].user_id, (0, 0))[0],
+                -sim_totals.get(row[0].user_id, (0, 0))[1],
+                row[1],
+            ),
+        )
+    ordered = [m.user_id for m, _ in rows_order]
     place = ordered.index(uid) + 1 if uid in ordered else None
 
     # Reveal predictions only for started matches, unless it's the viewer's own
     # profile or the viewer is a room admin.
     is_self = uid == ctx.user.id
     reveal = is_self or ctx.is_admin
-    now = datetime.now(timezone.utc)
+    now = sim.effective_now() if sim.active else datetime.now(timezone.utc)
 
     # Special predictions (champion / top scorer): shown only after the
     # tournament starts; admins always.
@@ -77,17 +97,31 @@ async def player_profile(
     exact_count = diff_count = outcome_count = 0
     for m, pred in rows:
         started = now >= m.kickoff_at
+        # In simulation the match state and points come from the overlay;
+        # otherwise straight from the DB.
+        if sim.active:
+            eff_status, eff_home, eff_away = effective_result(m, sim)
+            points, is_exact = (
+                points_for(pred.predicted_home, pred.predicted_away, m, ctx.room, sim)
+                if pred is not None
+                else (None, None)
+            )
+        else:
+            eff_status, eff_home, eff_away = m.status, m.home_score_ft, m.away_score_ft
+            points, is_exact = (
+                (pred.points_awarded, pred.is_exact) if pred is not None else (None, None)
+            )
         # Tally hit categories on finished, scored matches (room rules already
         # baked into points; here we just classify the prediction vs the result).
         if (
             pred is not None
-            and pred.points_awarded is not None
-            and m.home_score_ft is not None
-            and m.away_score_ft is not None
+            and points is not None
+            and eff_home is not None
+            and eff_away is not None
         ):
             pred_diff = pred.predicted_home - pred.predicted_away
-            real_diff = m.home_score_ft - m.away_score_ft
-            if pred.is_exact:
+            real_diff = eff_home - eff_away
+            if is_exact:
                 exact_count += 1
             elif pred_diff == real_diff:
                 diff_count += 1
@@ -103,24 +137,27 @@ async def player_profile(
                 group_name=m.group_name,
                 home_team=m.home_team,
                 away_team=m.away_team,
-                status=m.status,
-                home_score_ft=m.home_score_ft,
-                away_score_ft=m.away_score_ft,
+                status=eff_status,
+                home_score_ft=eff_home,
+                away_score_ft=eff_away,
                 started=started,
                 predicted_home=pred.predicted_home if show else None,
                 predicted_away=pred.predicted_away if show else None,
-                points_awarded=pred.points_awarded if pred else None,
-                is_exact=pred.is_exact if pred else None,
+                points_awarded=points,
+                is_exact=is_exact,
             )
         )
 
+    sim_total = sim_totals.get(uid, (0, 0)) if sim_totals is not None else None
     return PlayerProfile(
         user_id=target.id,
         nickname=target.nickname,
         avatar_url=target.avatar_url,
         place=place,
-        total_points=member.total_points,
-        exact_scores_count=member.exact_scores_count,
+        total_points=sim_total[0] if sim_total is not None else member.total_points,
+        exact_scores_count=(
+            sim_total[1] if sim_total is not None else member.exact_scores_count
+        ),
         diff_count=diff_count,
         outcome_count=outcome_count,
         is_self=is_self,

@@ -14,18 +14,21 @@ from app.schemas.special import (
     SpecialPredictionUpdate,
 )
 from app.services import audit, football_api
+from app.services.simulation import SimContext, get_sim
 
 router = APIRouter(prefix="/rooms/{room_id}/special-prediction", tags=["special"])
 players_router = APIRouter(tags=["players"])
 
 
-def _locked(room) -> bool:
-    return bool(room.first_match_at and datetime.now(timezone.utc) >= room.first_match_at)
+def _locked(room, sim: SimContext | None = None) -> bool:
+    now = sim.effective_now() if sim and sim.active else datetime.now(timezone.utc)
+    return bool(room.first_match_at and now >= room.first_match_at)
 
 
 @router.get("/my", response_model=SpecialPredictionOut)
 async def my_special(
     ctx: RoomContext = Depends(require_room_member),
+    sim: SimContext = Depends(get_sim),
     db: AsyncSession = Depends(get_db),
 ):
     sp = await db.scalar(
@@ -34,7 +37,7 @@ async def my_special(
             SpecialPrediction.user_id == ctx.user.id,
         )
     )
-    locked = _locked(ctx.room)
+    locked = _locked(ctx.room, sim)
     if not sp:
         return SpecialPredictionOut(locked=locked)
     return SpecialPredictionOut(
@@ -114,9 +117,10 @@ async def update_special(
 @router.get("/all", response_model=list[SpecialPredictionPublic])
 async def all_special(
     ctx: RoomContext = Depends(require_room_member),
+    sim: SimContext = Depends(get_sim),
     db: AsyncSession = Depends(get_db),
 ):
-    if not _locked(ctx.room) and not ctx.is_admin:
+    if not _locked(ctx.room, sim) and not ctx.is_admin:
         raise HTTPException(
             status.HTTP_403_FORBIDDEN, "Special predictions hidden until deadline"
         )

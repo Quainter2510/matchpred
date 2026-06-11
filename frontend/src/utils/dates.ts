@@ -13,12 +13,21 @@ export function formatTime(iso: string): string {
   });
 }
 
+import { getSimNow } from "../store/sim";
+
+// «Сейчас» с учётом режима симуляции (для суперадмина): пока симуляция
+// активна, отсчёт и блокировки на фронте считаются от симулированного момента.
+export function nowMs(): number {
+  const sim = getSimNow();
+  return sim ? new Date(sim).getTime() : Date.now();
+}
+
 export function isPast(iso: string): boolean {
-  return new Date(iso).getTime() <= Date.now();
+  return new Date(iso).getTime() <= nowMs();
 }
 
 export function countdown(iso: string): string {
-  const diff = new Date(iso).getTime() - Date.now();
+  const diff = new Date(iso).getTime() - nowMs();
   if (diff <= 0) return "Приём завершён";
   const d = Math.floor(diff / 86400000);
   const h = Math.floor((diff % 86400000) / 3600000);

@@ -4,8 +4,9 @@ import AdminMatches from "./AdminMatches";
 import AdminSpecial from "./AdminSpecial";
 import AdminSettings from "./AdminSettings";
 import AdminAuditLog from "./AdminAuditLog";
+import AdminSimulation from "./AdminSimulation";
 
-type Tab = "matches" | "special" | "recalc" | "audit";
+type Tab = "matches" | "special" | "recalc" | "audit" | "sim";
 
 // Global admin panel: matches, results, scorer and recalculation are shared
 // across all rooms. Members and room passwords are managed inside each room.
@@ -18,6 +19,7 @@ export default function Admin() {
     { id: "special", label: "Бомбардир" },
     { id: "recalc", label: "Пересчёт" },
     { id: "audit", label: "Журнал", super: true },
+    { id: "sim", label: "Симуляция", super: true },
   ];
 
   return (
@@ -49,6 +51,7 @@ export default function Admin() {
       {tab === "special" && <AdminSpecial />}
       {tab === "recalc" && <AdminSettings />}
       {tab === "audit" && isSuper && <AdminAuditLog />}
+      {tab === "sim" && isSuper && <AdminSimulation />}
     </div>
   );
 }

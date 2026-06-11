@@ -46,6 +46,23 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
 
+
+# Режим симуляции (X-Sim-Now) — строго read-only: любые мутации с этим
+# заголовком отклоняются, чтобы суперадмин из «песочницы» случайно не изменил
+# реальные данные. Регистрируется до CORS, чтобы CORS остался внешним слоем
+# и ответ 403 получил CORS-заголовки.
+@app.middleware("http")
+async def block_writes_in_simulation(request: Request, call_next):
+    if request.method not in ("GET", "HEAD", "OPTIONS") and request.headers.get(
+        "X-Sim-Now"
+    ):
+        return JSONResponse(
+            status_code=403,
+            content={"detail": "Режим симуляции: изменения запрещены. Выйдите из симуляции."},
+        )
+    return await call_next(request)
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.FRONTEND_URL],

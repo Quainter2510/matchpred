@@ -232,6 +232,7 @@ export const api = {
       .then((x) => x.data),
 
   // ---- matches (global admin) ----
+  adminMatches: () => client.get<Match[]>("/matches").then((x) => x.data),
   adminMatchesByDate: (date: string) =>
     client.get<Match[]>("/matches", { params: { date } }).then((x) => x.data),
   createMatch: (body: unknown) => client.post("/matches", body).then((x) => x.data),

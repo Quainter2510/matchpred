@@ -1,5 +1,5 @@
 import uuid
-from datetime import date as date_type, datetime, timezone
+from datetime import date as date_type
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
@@ -11,7 +11,7 @@ from app.dependencies import (
     require_any_admin,
     require_room_member,
 )
-from app.models import Match, Prediction, RoomMember, User
+from app.models import Match, Prediction, Room, RoomMember, User
 from app.schemas.match import (
     MatchCreate,
     MatchDay,
@@ -24,6 +24,7 @@ from app.schemas.match import (
 )
 from app.services import audit
 from app.services.recalc import rescore_match, score_match
+from app.services.simulation import SimContext, effective_result, get_sim, points_for
 
 # Room-scoped match reads (attach the caller's prediction in this room).
 room_router = APIRouter(prefix="/rooms/{room_id}/matches", tags=["matches"])
@@ -48,14 +49,29 @@ async def _my_preds_map(
     return {p.match_id: p for p in rows}
 
 
-def _to_out(match: Match, pred: Prediction | None) -> MatchOut:
+def _to_out(
+    match: Match,
+    pred: Prediction | None,
+    *,
+    room: Room | None = None,
+    sim: SimContext | None = None,
+) -> MatchOut:
     out = MatchOut.model_validate(match)
+    sim_active = sim is not None and sim.active
+    if sim_active:
+        out.status, out.home_score_ft, out.away_score_ft = effective_result(match, sim)
     if pred:
+        if sim_active and room is not None:
+            points, is_exact = points_for(
+                pred.predicted_home, pred.predicted_away, match, room, sim
+            )
+        else:
+            points, is_exact = pred.points_awarded, pred.is_exact
         out.my_prediction = MyPrediction(
             predicted_home=pred.predicted_home,
             predicted_away=pred.predicted_away,
-            points_awarded=pred.points_awarded,
-            is_exact=pred.is_exact,
+            points_awarded=points,
+            is_exact=is_exact,
         )
     return out
 
@@ -107,6 +123,7 @@ async def match_days(
 async def matches_by_date(
     date: date_type,
     ctx: RoomContext = Depends(require_room_member),
+    sim: SimContext = Depends(get_sim),
     db: AsyncSession = Depends(get_db),
 ):
     matches = (
@@ -115,33 +132,35 @@ async def matches_by_date(
         )
     ).scalars().all()
     preds = await _my_preds_map(db, ctx.room.id, ctx.user.id, [m.id for m in matches])
-    return [_to_out(m, preds.get(m.id)) for m in matches]
+    return [_to_out(m, preds.get(m.id), room=ctx.room, sim=sim) for m in matches]
 
 
 @room_router.get("/{match_id}", response_model=MatchOut)
 async def match_detail(
     match_id: uuid.UUID,
     ctx: RoomContext = Depends(require_room_member),
+    sim: SimContext = Depends(get_sim),
     db: AsyncSession = Depends(get_db),
 ):
     match = await db.get(Match, match_id)
     if not match:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Match not found")
     preds = await _my_preds_map(db, ctx.room.id, ctx.user.id, [match.id])
-    return _to_out(match, preds.get(match.id))
+    return _to_out(match, preds.get(match.id), room=ctx.room, sim=sim)
 
 
 @room_router.get("/{match_id}/predictions", response_model=list[PlayerPredictionOut])
 async def match_predictions(
     match_id: uuid.UUID,
     ctx: RoomContext = Depends(require_room_member),
+    sim: SimContext = Depends(get_sim),
     db: AsyncSession = Depends(get_db),
 ):
     match = await db.get(Match, match_id)
     if not match:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Match not found")
 
-    now = datetime.now(timezone.utc)
+    now = sim.effective_now()
     if now < match.kickoff_at and not ctx.is_admin:
         raise HTTPException(
             status.HTTP_403_FORBIDDEN, "Predictions hidden until kickoff"
@@ -157,18 +176,26 @@ async def match_predictions(
             )
         )
     ).all()
-    return [
-        PlayerPredictionOut(
-            user_id=u.id,
-            nickname=u.nickname,
-            avatar_url=u.avatar_url,
-            predicted_home=p.predicted_home,
-            predicted_away=p.predicted_away,
-            points_awarded=p.points_awarded,
-            is_exact=p.is_exact,
+    out = []
+    for p, u in rows:
+        if sim.active:
+            points, is_exact = points_for(
+                p.predicted_home, p.predicted_away, match, ctx.room, sim
+            )
+        else:
+            points, is_exact = p.points_awarded, p.is_exact
+        out.append(
+            PlayerPredictionOut(
+                user_id=u.id,
+                nickname=u.nickname,
+                avatar_url=u.avatar_url,
+                predicted_home=p.predicted_home,
+                predicted_away=p.predicted_away,
+                points_awarded=points,
+                is_exact=is_exact,
+            )
         )
-        for p, u in rows
-    ]
+    return out
 
 
 # ---------------- Global admin (any room admin or superadmin) ----------------
