@@ -43,6 +43,9 @@ export interface MatchDay {
   multiplier: number | null;
   finished_count: number;
   my_points: number;
+  // Только для админов комнаты (иначе null): заполняемость тура участниками.
+  members_filled: number | null;
+  members_total: number | null;
 }
 
 export interface MyPrediction {

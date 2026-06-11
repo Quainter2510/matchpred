@@ -21,20 +21,20 @@ function dayStatus(d: MatchDay): { cls: string; label: string; labelCls: string 
     d.match_count > 0 && d.my_predictions_count >= d.match_count;
   if (allPredicted)
     return {
-      cls: "border-emerald-300 bg-emerald-50 hover:bg-emerald-100",
+      cls: "border-emerald-200 bg-emerald-50/60 hover:bg-emerald-50",
       label: "Прогноз готов",
       labelCls: "text-emerald-700",
     };
   if (isPast(d.first_kickoff_at))
     return {
-      cls: "border-red-300 bg-red-50 hover:bg-red-100",
+      cls: "border-rose-200 bg-rose-50/60 hover:bg-rose-50",
       label: "Прогноз пропущен",
-      labelCls: "text-red-700",
+      labelCls: "text-rose-700",
     };
   const msToStart = new Date(d.first_kickoff_at).getTime() - nowMs();
   if (msToStart <= 2 * DAY_MS)
     return {
-      cls: "border-amber-300 bg-amber-50 hover:bg-amber-100",
+      cls: "border-amber-200 bg-amber-50/60 hover:bg-amber-50",
       label: "Скоро дедлайн",
       labelCls: "text-amber-700",
     };
@@ -206,6 +206,9 @@ export default function Tournament() {
                   const st = dayStatus(d);
                   const tourStarted = isPast(d.first_kickoff_at);
                   const tourLive = tourStarted && d.finished_count < d.match_count;
+                  // Пропущенный (не полностью заполненный) тур — очки красным.
+                  const missed =
+                    tourStarted && d.my_predictions_count < d.match_count;
                   return (
                     <Link
                       key={d.date}
@@ -220,6 +223,14 @@ export default function Tournament() {
                         <span className="text-xs text-slate-500">
                           {d.my_predictions_count}/{d.match_count} прогнозов
                         </span>
+                        {d.members_total != null && d.members_filled != null && (
+                          <span
+                            className="text-xs text-slate-500"
+                            title="Сколько участников дали прогноз на все матчи дня"
+                          >
+                            заполнили: {d.members_filled}/{d.members_total}
+                          </span>
+                        )}
                         {st.label && (
                           <span className={`text-xs ${st.labelCls}`}>{st.label}</span>
                         )}
@@ -233,7 +244,11 @@ export default function Tournament() {
                               title="Тур ещё идёт"
                             />
                           )}
-                          <span className="text-2xl font-extrabold tabular-nums text-slate-700">
+                          <span
+                            className={`text-2xl font-extrabold tabular-nums ${
+                              missed ? "text-rose-600" : "text-slate-700"
+                            }`}
+                          >
                             +{d.my_points}
                           </span>
                         </span>

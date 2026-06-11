@@ -25,10 +25,10 @@ function cellFor(
   if (m.status !== "finished") return null;
   const cls =
     mine > theirs
-      ? "bg-emerald-100 text-emerald-900"
+      ? "bg-emerald-50 text-emerald-800"
       : mine === theirs
-        ? "bg-amber-100 text-amber-900"
-        : "bg-red-100 text-red-900";
+        ? "bg-amber-50 text-amber-800"
+        : "bg-rose-50 text-rose-800";
   return { text: `${mine}:${theirs}`, cls };
 }
 

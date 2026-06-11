@@ -41,6 +41,10 @@ class MatchDay(BaseModel):
     # finished_count < match_count).
     finished_count: int = 0
     my_points: int = 0
+    # Заполняемость тура (только для админов комнаты, иначе null): сколько
+    # участников дали прогноз на ВСЕ матчи дня и сколько участников всего.
+    members_filled: int | None = None
+    members_total: int | None = None
 
 
 class MultiplierUpdate(BaseModel):

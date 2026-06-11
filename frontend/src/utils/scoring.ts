@@ -32,16 +32,17 @@ export function classifyPrediction(
   return "miss";
 }
 
+// Заливки приглушённые (полупрозрачные -50), чтобы текст оставался главным.
 export const HIT_BG: Record<HitKind, string> = {
-  exact: "bg-emerald-50",
-  diff: "bg-sky-50",
-  outcome: "bg-amber-50",
-  miss: "bg-rose-50",
+  exact: "bg-emerald-50/60",
+  diff: "bg-sky-50/60",
+  outcome: "bg-amber-50/60",
+  miss: "bg-rose-50/60",
 };
 
 export const HIT_CARD: Record<HitKind, string> = {
-  exact: "border-emerald-300 bg-emerald-50",
-  diff: "border-sky-300 bg-sky-50",
-  outcome: "border-amber-300 bg-amber-50",
-  miss: "border-rose-200 bg-rose-50",
+  exact: "border-emerald-200 bg-emerald-50/60",
+  diff: "border-sky-200 bg-sky-50/60",
+  outcome: "border-amber-200 bg-amber-50/60",
+  miss: "border-rose-200 bg-rose-50/60",
 };

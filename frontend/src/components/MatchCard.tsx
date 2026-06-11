@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { Match } from "../api/endpoints";
+import { useAuth } from "../store/auth";
 import { formatTime, isPast } from "../utils/dates";
 import { formatStage } from "../utils/stage";
 import { classifyPrediction, HitKind } from "../utils/scoring";
@@ -37,10 +38,10 @@ function hitKind(match: Match): HitKind | null {
 // Заливка карточки сыгранного матча по результату прогноза. `!` нужен, потому
 // что .card задаёт bg/border позже utilities в index.css.
 const CARD_TINT: Record<HitKind, string> = {
-  exact: "!border-emerald-300 !bg-emerald-50",
-  diff: "!border-sky-300 !bg-sky-50",
-  outcome: "!border-amber-300 !bg-amber-50",
-  miss: "!border-rose-200 !bg-rose-50",
+  exact: "!border-emerald-200 !bg-emerald-50/60",
+  diff: "!border-sky-200 !bg-sky-50/60",
+  outcome: "!border-amber-200 !bg-amber-50/60",
+  miss: "!border-rose-200 !bg-rose-50/60",
 };
 
 const BADGE_TINT: Record<HitKind, string> = {
@@ -60,6 +61,7 @@ export function LiveBadge() {
 }
 
 export default function MatchCard({ match, roomId }: { match: Match; roomId: string }) {
+  const isSuper = useAuth((s) => s.isSuperadmin());
   const started = isPast(match.kickoff_at);
   const finished = match.status === "finished";
   const live = match.status === "live";
@@ -132,9 +134,21 @@ export default function MatchCard({ match, roomId }: { match: Match; roomId: str
 
       <div className="mt-auto flex gap-2">
         {!started ? (
-          <Link to={`/room/${roomId}/match/${match.id}/predict`} className="btn-primary flex-1">
-            {p ? "Изменить прогноз" : "Сделать прогноз"}
-          </Link>
+          <>
+            <Link to={`/room/${roomId}/match/${match.id}/predict`} className="btn-primary flex-1">
+              {p ? "Изменить прогноз" : "Сделать прогноз"}
+            </Link>
+            {/* Суперадмин видит прогнозы всех и до начала матча. */}
+            {isSuper && (
+              <Link
+                to={`/room/${roomId}/match/${match.id}/predictions`}
+                className="btn-ghost"
+                title="Прогнозы всех участников (видно только админам)"
+              >
+                Итоги
+              </Link>
+            )}
+          </>
         ) : (
           <Link to={`/room/${roomId}/match/${match.id}/predictions`} className="btn-ghost flex-1">
             Прогнозы участников

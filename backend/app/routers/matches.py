@@ -83,7 +83,8 @@ async def match_days(
     db: AsyncSession = Depends(get_db),
 ):
     """Туры (дни) с моими очками: my_points — сумма за завершённые матчи дня,
-    finished_count позволяет фронту показать «тур ещё идёт»."""
+    finished_count позволяет фронту показать «тур ещё идёт». Админам комнаты
+    дополнительно отдаётся, сколько участников заполнили все прогнозы дня."""
     matches = (
         await db.execute(select(Match).order_by(Match.kickoff_at))
     ).scalars().all()
@@ -98,6 +99,35 @@ async def match_days(
             )
         ).scalars().all()
     }
+
+    # Заполняемость туров (только для админов): по каждому дню — сколько
+    # участников комнаты дали прогноз на все матчи дня.
+    members_total: int | None = None
+    per_user_day: dict = {}  # (user_id, date) -> кол-во прогнозов
+    if ctx.is_admin:
+        member_ids = set(
+            (
+                await db.execute(
+                    select(RoomMember.user_id).where(RoomMember.room_id == ctx.room.id)
+                )
+            ).scalars().all()
+        )
+        members_total = len(member_ids)
+        match_dates = {m.id: m.match_date for m in matches}
+        rows = (
+            await db.execute(
+                select(Prediction.user_id, Prediction.match_id).where(
+                    Prediction.room_id == ctx.room.id
+                )
+            )
+        ).all()
+        for user_id, match_id in rows:
+            if user_id not in member_ids:
+                continue
+            d = match_dates.get(match_id)
+            if d is not None:
+                key = (user_id, d)
+                per_user_day[key] = per_user_day.get(key, 0) + 1
 
     days: dict = {}
     for m in matches:
@@ -135,18 +165,29 @@ async def match_days(
                     points = pred.points_awarded
                 d["points"] += points or 0
 
-    return [
-        MatchDay(
-            date=date,
-            match_count=d["count"],
-            my_predictions_count=d["mine"],
-            first_kickoff_at=d["first"],
-            multiplier=d["mult_min"] if d["mult_min"] == d["mult_max"] else None,
-            finished_count=d["finished"],
-            my_points=d["points"],
+    out = []
+    for date, d in sorted(days.items()):
+        members_filled: int | None = None
+        if ctx.is_admin and members_total is not None:
+            members_filled = sum(
+                1
+                for (uid, day), n in per_user_day.items()
+                if day == date and n >= d["count"]
+            )
+        out.append(
+            MatchDay(
+                date=date,
+                match_count=d["count"],
+                my_predictions_count=d["mine"],
+                first_kickoff_at=d["first"],
+                multiplier=d["mult_min"] if d["mult_min"] == d["mult_max"] else None,
+                finished_count=d["finished"],
+                my_points=d["points"],
+                members_total=members_total,
+                members_filled=members_filled,
+            )
         )
-        for date, d in sorted(days.items())
-    ]
+    return out
 
 
 @room_router.get("", response_model=list[MatchOut])
