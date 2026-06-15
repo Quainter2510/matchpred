@@ -13,15 +13,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import RoomContext, require_room_member
-from app.models import Match
+from app.models import Match, SpecialPrediction
 from app.schemas.standings import (
     GroupStanding,
     GroupTeamRow,
     PlayoffStage,
+    PredictedScorer,
     StandingsMatch,
     StandingsOut,
+    TopScorer,
+    TopScorersOut,
 )
 from app.services.simulation import SimContext, effective_result, get_sim
+from app.services.top_scorers import get_snapshot
 
 router = APIRouter(prefix="/rooms/{room_id}/standings", tags=["standings"])
 
@@ -122,3 +126,60 @@ async def standings(
         PlayoffStage(stage=stage, matches=items) for stage, items in playoff.items()
     ]
     return StandingsOut(groups=group_out, playoff=playoff_out)
+
+
+@router.get("/top-scorers", response_model=TopScorersOut)
+async def top_scorers(
+    ctx: RoomContext = Depends(require_room_member),
+    db: AsyncSession = Depends(get_db),
+):
+    """Топ-5 бомбардиров турнира + все игроки, которых участники этой комнаты
+    выбрали лучшим бомбардиром (с их голами). Данные — из снимка (Redis),
+    обновляется ежедневно/по кнопке суперадмина."""
+    snap = await get_snapshot()
+    scorers = snap.get("scorers", []) if snap else []
+    by_id = {s["api_id"]: s for s in scorers}
+
+    top = [
+        TopScorer(
+            name=s["name"], photo=s.get("photo"), team=s.get("team"), goals=s["goals"]
+        )
+        for s in scorers[:5]
+    ]
+
+    rows = (
+        await db.execute(
+            select(
+                SpecialPrediction.top_scorer_api_id, SpecialPrediction.top_scorer_name
+            ).where(
+                SpecialPrediction.room_id == ctx.room.id,
+                SpecialPrediction.top_scorer_name.is_not(None),
+            )
+        )
+    ).all()
+    agg: dict = {}  # ключ (api_id или имя) -> {name, api_id, backers}
+    for api_id, name in rows:
+        key = api_id if api_id is not None else f"name:{(name or '').lower()}"
+        e = agg.setdefault(key, {"name": name, "api_id": api_id, "backers": 0})
+        e["backers"] += 1
+        if name and not e["name"]:
+            e["name"] = name
+
+    predicted = []
+    for e in agg.values():
+        s = by_id.get(e["api_id"]) if e["api_id"] is not None else None
+        predicted.append(
+            PredictedScorer(
+                name=(s["name"] if s else e["name"]) or "—",
+                photo=s.get("photo") if s else None,
+                goals=s["goals"] if s else 0,
+                backers=e["backers"],
+            )
+        )
+    predicted.sort(key=lambda p: (-p.goals, -p.backers, p.name.lower()))
+
+    return TopScorersOut(
+        updated_at=snap.get("updated_at") if snap else None,
+        top=top,
+        predicted=predicted,
+    )

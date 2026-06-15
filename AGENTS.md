@@ -434,6 +434,7 @@ frontend/
 | Метод | Путь | Доступ | Описание |
 |-------|------|--------|---------|
 | GET | `/rooms/{id}/standings` | Member | `{groups: [{name, teams: [{team, played, goals_for, goals_against, goal_diff, points}], matches}], playoff: [{stage, matches}]}`. Группы — по букве из `group_name`/кода стадии; очки 3/1/0 и разница — только по завершённым матчам; сортировка: очки → разница → забитые → алфавит. Плей-офф — стадии в порядке первого матча. Данные глобальные (одинаковы во всех комнатах), уважает режим симуляции |
+| GET | `/rooms/{id}/standings/top-scorers` | Member | `{updated_at, top: [{name, photo, team, goals}]×5, predicted: [{name, photo, goals, backers}]}`. Топ-5 бомбардиров турнира + все игроки из спецпрогнозов **этой комнаты** (с их голами и числом выбравших). Из суточного снимка в Redis (`top_scorers:snapshot`), читатель к API не ходит. Обновляется кроном в 10:00 МСК и при `/admin/sync` |
 
 ### Профиль игрока — `/rooms/{id}/players`
 
@@ -445,7 +446,7 @@ frontend/
 
 | Метод | Путь | Доступ | Описание |
 |-------|------|--------|---------|
-| POST | `/admin/sync` | SA | Синхронизация с API-Football + пересчёт |
+| POST | `/admin/sync` | SA | Синхронизация с API-Football + пересчёт + обновление снимка бомбардиров |
 | POST | `/admin/recalculate` | SA | Пересчитать все незакрытые очки (идемпотентно) |
 | POST | `/admin/superadmin/transfer` | SA | `{target_user_id}` — передать роль |
 | GET | `/admin/audit-log` | SA | `?event_type=&actor_id=&limit=50(≤200)&offset=0`, сортировка `created_at DESC` |

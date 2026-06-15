@@ -1,9 +1,88 @@
 import { useQuery } from "@tanstack/react-query";
-import { api, GroupStanding, StandingsMatch } from "../api/endpoints";
+import {
+  api,
+  GroupStanding,
+  PredictedScorer,
+  StandingsMatch,
+  TopScorer,
+} from "../api/endpoints";
 import { formatStage } from "../utils/stage";
 import { formatDate, formatTime } from "../utils/dates";
+import Avatar from "./Avatar";
 import { LiveBadge } from "./MatchCard";
 import TeamName from "./TeamName";
+
+// Блок «Бомбардиры турнира»: топ-5 по голам + все игроки, выбранные участниками
+// комнаты лучшим бомбардиром (с их голами). Данные — суточный снимок с бэкенда.
+function TopScorersBlock({ roomId }: { roomId: string }) {
+  const { data } = useQuery({
+    queryKey: ["top-scorers", roomId],
+    queryFn: () => api.topScorers(roomId),
+    refetchInterval: 10 * 60_000,
+  });
+  if (!data || (!data.top.length && !data.predicted.length)) return null;
+
+  const top: TopScorer[] = data.top;
+  const predicted: PredictedScorer[] = data.predicted;
+
+  return (
+    <div className="card space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="font-semibold">⚽ Бомбардиры турнира</h3>
+        {data.updated_at && (
+          <span className="shrink-0 text-xs text-slate-400">
+            обновлено {formatDate(data.updated_at)}
+          </span>
+        )}
+      </div>
+
+      {top.length > 0 ? (
+        <ol className="space-y-1.5">
+          {top.map((s, i) => (
+            <li key={i} className="flex items-center gap-2 text-sm">
+              <span className="w-4 shrink-0 text-center font-semibold text-slate-400">
+                {i + 1}
+              </span>
+              <Avatar url={s.photo} nick={s.name} className="h-7 w-7" textClassName="text-xs" />
+              <span className="min-w-0 flex-1 truncate">
+                <span className="font-medium">{s.name}</span>
+                {s.team && <span className="ml-1 text-xs text-slate-400">{s.team}</span>}
+              </span>
+              <span className="shrink-0 font-bold tabular-nums">{s.goals}</span>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="text-sm text-slate-500">Данные появятся после первых голов.</p>
+      )}
+
+      {predicted.length > 0 && (
+        <div className="border-t pt-2">
+          <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            Выбор участников
+          </div>
+          <ul className="space-y-1.5">
+            {predicted.map((s, i) => (
+              <li key={i} className="flex items-center gap-2 text-sm">
+                <Avatar url={s.photo} nick={s.name} className="h-7 w-7" textClassName="text-xs" />
+                <span className="min-w-0 flex-1 truncate font-medium">{s.name}</span>
+                <span
+                  className="shrink-0 text-xs text-slate-400"
+                  title="Сколько участников выбрали этого бомбардира"
+                >
+                  👥 {s.backers}
+                </span>
+                <span className="w-7 shrink-0 text-right font-bold tabular-nums">
+                  {s.goals}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // Результат матча двух команд группы с точки зрения команды строки:
 // "2:1" (свои голы первыми). null — матч не найден / не начался.
@@ -129,6 +208,8 @@ export default function WcStandings({ roomId }: { roomId: string }) {
 
   return (
     <div className="space-y-6">
+      <TopScorersBlock roomId={roomId} />
+
       {data.groups.length > 0 && (
         <div className="grid gap-4 lg:grid-cols-2">
           {data.groups.map((g) => (

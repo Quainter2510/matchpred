@@ -16,6 +16,7 @@ from app.schemas.admin import AuditLogOut, TransferRequest
 from app.services import audit, football_api
 from app.services.recalc import recalculate_all
 from app.services.sync import apply_fixtures
+from app.services.top_scorers import refresh_top_scorers
 
 router = APIRouter(tags=["admin"])
 
@@ -67,7 +68,12 @@ async def sync_api(
     await db.commit()
     summary = await recalculate_all(db)
     await db.commit()
-    return {**stats, **summary}
+    # Обновляем снимок бомбардиров (не критично для синка — глушим ошибки).
+    try:
+        scorers = await refresh_top_scorers()
+    except Exception:
+        scorers = 0
+    return {**stats, **summary, "top_scorers": scorers}
 
 
 @router.post("/admin/recalculate")

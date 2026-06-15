@@ -15,6 +15,7 @@ from app.models import Match
 from app.services import audit, football_api
 from app.services.recalc import recalculate_all
 from app.services.sync import apply_fixtures
+from app.services.top_scorers import refresh_top_scorers
 
 log = logging.getLogger("scheduler")
 scheduler = AsyncIOScheduler(timezone="UTC")
@@ -69,6 +70,15 @@ async def sync_tick(force: bool = False) -> None:
     log.info("sync_tick done: %s", stats)
 
 
+async def top_scorers_tick() -> None:
+    """Ежедневное обновление снимка бомбардиров (10:00 МСК)."""
+    try:
+        n = await refresh_top_scorers()
+        log.info("top_scorers refreshed: %s", n)
+    except Exception as exc:  # network errors must not crash the scheduler
+        log.warning("top scorers refresh failed: %s", exc)
+
+
 def start_scheduler() -> None:
     if not settings.API_FOOTBALL_KEY:
         log.info("API_FOOTBALL_KEY not set — scheduler disabled")
@@ -78,6 +88,10 @@ def start_scheduler() -> None:
     # Daily safety net to pick up newly added fixtures.
     scheduler.add_job(
         sync_tick, "cron", hour=3, kwargs={"force": True}, id="sync_daily", replace_existing=True
+    )
+    # Бомбардиры турнира — раз в день в 10:00 МСК (07:00 UTC).
+    scheduler.add_job(
+        top_scorers_tick, "cron", hour=7, id="top_scorers_daily", replace_existing=True
     )
     scheduler.start()
     log.info("scheduler started")

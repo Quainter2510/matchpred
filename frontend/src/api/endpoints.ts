@@ -232,6 +232,26 @@ export interface Standings {
   playoff: PlayoffStage[];
 }
 
+export interface TopScorer {
+  name: string;
+  photo: string | null;
+  team: string | null;
+  goals: number;
+}
+
+export interface PredictedScorer {
+  name: string;
+  photo: string | null;
+  goals: number;
+  backers: number;
+}
+
+export interface TopScorers {
+  updated_at: string | null;
+  top: TopScorer[];
+  predicted: PredictedScorer[];
+}
+
 export interface AuditEntry {
   id: number;
   created_at: string;
@@ -381,6 +401,10 @@ export const api = {
   // ---- standings (room-scoped; данные глобальные) ----
   standings: (roomId: string) =>
     client.get<Standings>(`${r(roomId)}/standings`).then((x) => x.data),
+  topScorers: (roomId: string) =>
+    client
+      .get<TopScorers>(`${r(roomId)}/standings/top-scorers`)
+      .then((x) => x.data),
 
   // ---- leaderboard (room-scoped) ----
   leaderboard: (roomId: string) =>

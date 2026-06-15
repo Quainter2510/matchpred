@@ -165,6 +165,40 @@ async def fetch_wc_team_ids() -> dict[int, str]:
     return out
 
 
+async def fetch_top_scorers() -> list[dict]:
+    """Бомбардиры турнира (лига+сезон) по убыванию голов. До первых забитых
+    мячей API может вернуть пустой список."""
+    data = await _get(
+        "/players/topscorers",
+        {
+            "league": settings.API_FOOTBALL_LEAGUE_ID,
+            "season": settings.API_FOOTBALL_SEASON,
+        },
+    )
+    out: list[dict] = []
+    for item in data.get("response", []):
+        player = item.get("player", {})
+        pid = player.get("id")
+        if not pid:
+            continue
+        stats = (item.get("statistics") or [{}])[0]
+        goals = (stats.get("goals") or {}).get("total") or 0
+        team = (stats.get("team") or {}).get("name") or player.get("nationality")
+        name = player.get("name") or " ".join(
+            filter(None, [player.get("firstname"), player.get("lastname")])
+        )
+        out.append(
+            {
+                "api_id": pid,
+                "name": name,
+                "photo": player.get("photo"),
+                "team": team,
+                "goals": goals,
+            }
+        )
+    return out
+
+
 async def fetch_team_fixtures(team_id: int, season: int) -> list[dict]:
     """Все матчи команды за сезон (год) во всех турнирах — для справочника
     team_matches (форма сборных). Матчи нашего ЧМ (league = настроенная лига)
