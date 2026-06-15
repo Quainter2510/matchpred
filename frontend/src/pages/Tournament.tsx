@@ -32,13 +32,11 @@ function RecentResults({ roomId }: { roomId: string }) {
     .sort(
       (a, b) =>
         new Date(b.kickoff_at).getTime() - new Date(a.kickoff_at).getTime()
-    )
-    .slice(0, 3)
-    .reverse(); // самый свежий — справа
+    ); // самый свежий — слева, дальше листать вправо
   if (!recent.length) return null;
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-1">
       {recent.map((m) => {
         const hc = findCountry(m.home_team);
         const ac = findCountry(m.away_team);
@@ -52,7 +50,7 @@ function RecentResults({ roomId }: { roomId: string }) {
             key={m.id}
             to={`/room/${roomId}/match/${m.id}/predictions`}
             title={`${m.home_team} ${score} ${m.away_team}`}
-            className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2 py-0.5 text-xs hover:bg-slate-50"
+            className="inline-flex shrink-0 items-center gap-1 rounded-full border border-slate-200 px-2 py-0.5 text-xs hover:bg-slate-50"
           >
             {hc ? <Flag code={hc.code} title={m.home_team} /> : null}
             <span
