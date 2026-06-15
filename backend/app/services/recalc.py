@@ -20,6 +20,7 @@ from app.models import (
     SpecialPrediction,
 )
 from app.redis_client import invalidate_leaderboard_cache
+from app.services.players_catalog import canonical_scorer_id
 from app.services.scoring import determine_winner, score_prediction
 
 
@@ -251,10 +252,12 @@ async def score_top_scorer(
 ) -> int:
     """Начислить очки за бомбардира **в одной комнате**: тем, кто угадал, —
     room.points_scorer, остальным 0. Идемпотентно (только scorer_points IS NULL).
-    Комната определяет бомбардира самостоятельно."""
+    Комната определяет бомбардира самостоятельно. ID канонизируется, поэтому
+    реальный (278) и кураторский (-1) ID одного игрока совпадают."""
     room = await db.get(Room, room_id)
     if not room or not room.is_active:
         return 0
+    target = canonical_scorer_id(player_api_id)
     rows = (
         await db.execute(
             select(SpecialPrediction).where(
@@ -265,7 +268,11 @@ async def score_top_scorer(
     ).scalars().all()
     awarded = 0
     for sp in rows:
-        pts = room.points_scorer if sp.top_scorer_api_id == player_api_id else 0
+        pts = (
+            room.points_scorer
+            if canonical_scorer_id(sp.top_scorer_api_id) == target
+            else 0
+        )
         sp.scorer_points = pts
         if pts:
             await _bump_member(db, sp.room_id, sp.user_id, pts, 0)

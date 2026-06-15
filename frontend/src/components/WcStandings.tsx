@@ -8,7 +8,6 @@ import {
 } from "../api/endpoints";
 import { formatStage } from "../utils/stage";
 import { formatDate, formatTime } from "../utils/dates";
-import Avatar from "./Avatar";
 import { LiveBadge } from "./MatchCard";
 import TeamName from "./TeamName";
 
@@ -43,7 +42,6 @@ function TopScorersBlock({ roomId }: { roomId: string }) {
               <span className="w-4 shrink-0 text-center font-semibold text-slate-400">
                 {i + 1}
               </span>
-              <Avatar url={s.photo} nick={s.name} className="h-7 w-7" textClassName="text-xs" />
               <span className="min-w-0 flex-1 truncate">
                 <span className="font-medium">{s.name}</span>
                 {s.team && <span className="ml-1 text-xs text-slate-400">{s.team}</span>}
@@ -64,7 +62,6 @@ function TopScorersBlock({ roomId }: { roomId: string }) {
           <ul className="space-y-1.5">
             {predicted.map((s, i) => (
               <li key={i} className="flex items-center gap-2 text-sm">
-                <Avatar url={s.photo} nick={s.name} className="h-7 w-7" textClassName="text-xs" />
                 <span className="min-w-0 flex-1 truncate font-medium">{s.name}</span>
                 <span
                   className="shrink-0 text-xs text-slate-400"

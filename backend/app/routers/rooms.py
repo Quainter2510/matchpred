@@ -1,7 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -13,7 +13,14 @@ from app.dependencies import (
     require_room_member,
     require_superadmin,
 )
-from app.models import Match, Room, RoomMember, User
+from app.models import (
+    Match,
+    Prediction,
+    Room,
+    RoomMember,
+    SpecialPrediction,
+    User,
+)
 from app.redis_client import invalidate_leaderboard_cache
 from app.schemas.room import (
     ParticipationUpdate,
@@ -399,6 +406,18 @@ async def remove_member(
     if not member:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Member not found")
     await db.delete(member)
+    # Прогнозы и спецпрогноз выбывшего в этой комнате тоже удаляем — иначе они
+    # остаются «осиротевшими» в БД и продолжают всплывать в списках.
+    await db.execute(
+        delete(Prediction).where(
+            Prediction.room_id == ctx.room.id, Prediction.user_id == uid
+        )
+    )
+    await db.execute(
+        delete(SpecialPrediction).where(
+            SpecialPrediction.room_id == ctx.room.id, SpecialPrediction.user_id == uid
+        )
+    )
     await audit.log_event(
         db,
         "member_removed",

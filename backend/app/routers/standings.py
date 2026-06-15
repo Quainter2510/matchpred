@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import RoomContext, require_room_member
-from app.models import Match, SpecialPrediction
+from app.models import Match, RoomMember, SpecialPrediction
 from app.schemas.standings import (
     GroupStanding,
     GroupTeamRow,
@@ -24,6 +24,7 @@ from app.schemas.standings import (
     TopScorer,
     TopScorersOut,
 )
+from app.services.players_catalog import resolve_player
 from app.services.simulation import SimContext, effective_result, get_sim
 from app.services.top_scorers import get_snapshot
 
@@ -138,40 +139,60 @@ async def top_scorers(
     обновляется ежедневно/по кнопке суперадмина."""
     snap = await get_snapshot()
     scorers = snap.get("scorers", []) if snap else []
-    by_id = {s["api_id"]: s for s in scorers}
+    by_id = {s["api_id"]: s for s in scorers}  # ключи — реальные ID из API
 
     top = [
         TopScorer(
-            name=s["name"], photo=s.get("photo"), team=s.get("team"), goals=s["goals"]
+            # Подменяем имя на русское, если игрок есть в каталоге.
+            name=(resolve_player(s["api_id"]) or {}).get("name") or s["name"],
+            photo=s.get("photo"),
+            team=s.get("team"),
+            goals=s["goals"],
         )
         for s in scorers[:5]
     ]
 
+    # Только текущие участники комнаты (выбывшие в выборку не попадают).
     rows = (
         await db.execute(
             select(
                 SpecialPrediction.top_scorer_api_id, SpecialPrediction.top_scorer_name
-            ).where(
+            )
+            .join(
+                RoomMember,
+                (RoomMember.room_id == SpecialPrediction.room_id)
+                & (RoomMember.user_id == SpecialPrediction.user_id),
+            )
+            .where(
                 SpecialPrediction.room_id == ctx.room.id,
                 SpecialPrediction.top_scorer_name.is_not(None),
             )
         )
     ).all()
-    agg: dict = {}  # ключ (api_id или имя) -> {name, api_id, backers}
+    # Канонизируем ID: реальный и кураторский (-1 / 278) — это один игрок.
+    agg: dict = {}  # ключ -> {name, real_id, backers}
     for api_id, name in rows:
-        key = api_id if api_id is not None else f"name:{(name or '').lower()}"
-        e = agg.setdefault(key, {"name": name, "api_id": api_id, "backers": 0})
+        rec = resolve_player(api_id)
+        if rec:
+            key = rec["canonical_id"]
+            disp_name = rec["name"]
+            real_id = rec["real_id"]
+        else:
+            key = api_id if api_id is not None else f"name:{(name or '').lower()}"
+            disp_name = name
+            real_id = api_id
+        e = agg.setdefault(key, {"name": disp_name, "real_id": real_id, "backers": 0})
         e["backers"] += 1
-        if name and not e["name"]:
-            e["name"] = name
+        if disp_name and not e["name"]:
+            e["name"] = disp_name
 
     predicted = []
     for e in agg.values():
-        s = by_id.get(e["api_id"]) if e["api_id"] is not None else None
+        s = by_id.get(e["real_id"]) if e["real_id"] is not None else None
         predicted.append(
             PredictedScorer(
-                name=(s["name"] if s else e["name"]) or "—",
-                photo=s.get("photo") if s else None,
+                name=e["name"] or "—",
+                photo=None,
                 goals=s["goals"] if s else 0,
                 backers=e["backers"],
             )
