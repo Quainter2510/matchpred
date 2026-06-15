@@ -3,6 +3,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, RoomDetail, RoomScoring } from "../../api/endpoints";
 import { useAuth } from "../../store/auth";
+import { formatDate, formatTime } from "../../utils/dates";
+import TeamName from "../../components/TeamName";
+import MultiplierBadge from "../../components/MultiplierBadge";
+import PlayerSearch from "../../components/PlayerSearch";
+
+const MULTIPLIERS = [0, 1, 2, 3];
 
 const RULE_FIELDS: { key: keyof RoomScoring; label: string }[] = [
   { key: "points_exact", label: "Точный счёт" },
@@ -270,6 +276,158 @@ function RoomPassword({ roomId }: { roomId: string }) {
   );
 }
 
+function Multipliers({ roomId }: { roomId: string }) {
+  const qc = useQueryClient();
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [tourMult, setTourMult] = useState(1);
+  const matches = useQuery({
+    queryKey: ["room-admin-matches", roomId, date],
+    queryFn: () => api.matchesByDate(roomId, date),
+  });
+  const invalidate = () => qc.invalidateQueries();
+  const setMult = useMutation({
+    mutationFn: ({ id, m }: { id: string; m: number }) =>
+      api.setMatchMultiplier(roomId, id, m),
+    onSuccess: invalidate,
+    onError: (e: any) => alert(e.response?.data?.detail || "Ошибка"),
+  });
+  const tour = useMutation({
+    mutationFn: () => api.setTourMultiplier(roomId, date, tourMult),
+    onSuccess: invalidate,
+    onError: (e: any) => alert(e.response?.data?.detail || "Ошибка"),
+  });
+
+  return (
+    <section className="card space-y-3">
+      <h2 className="text-lg font-semibold">Коэффициенты матчей</h2>
+      <p className="text-sm text-slate-500">
+        Действуют только в этом соревновании. ×0 аннулирует матч (очки 0, точный
+        счёт не идёт в тайбрейк). У завершённого матча смена коэффициента
+        пересчитывает очки.
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          type="date"
+          className="input w-auto"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+        />
+        <span className="ml-auto flex items-center gap-2 text-sm">
+          На весь тур:
+          <select
+            className="rounded border px-1 py-1"
+            value={tourMult}
+            onChange={(e) => setTourMult(Number(e.target.value))}
+          >
+            {MULTIPLIERS.map((m) => (
+              <option key={m} value={m}>
+                ×{m}
+              </option>
+            ))}
+          </select>
+          <button
+            className="btn-ghost"
+            disabled={tour.isPending || !matches.data?.length}
+            onClick={() => {
+              if (
+                confirm(
+                  `Установить коэффициент ×${tourMult} на все матчи ${formatDate(date)}?` +
+                    (tourMult === 0 ? "\n\nВНИМАНИЕ: очки за тур будут обнулены!" : "")
+                )
+              )
+                tour.mutate();
+            }}
+          >
+            {tour.isPending ? "Применение…" : "Применить к туру"}
+          </button>
+        </span>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b text-left text-slate-500">
+              <th className="py-2">Когда</th>
+              <th>Матч</th>
+              <th>Кэф.</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(matches.data || []).map((m) => (
+              <tr key={m.id} className="border-b">
+                <td className="py-2 text-xs text-slate-500">
+                  {formatTime(m.kickoff_at)}
+                </td>
+                <td>
+                  <span className="inline-flex flex-wrap items-center gap-1.5">
+                    <TeamName team={m.home_team} />
+                    <span className="text-slate-400">—</span>
+                    <TeamName team={m.away_team} />
+                    <MultiplierBadge value={m.points_multiplier} />
+                  </span>
+                </td>
+                <td>
+                  <select
+                    className="rounded border px-1 py-1 text-sm"
+                    value={m.points_multiplier}
+                    disabled={setMult.isPending}
+                    onChange={(e) =>
+                      setMult.mutate({ id: m.id, m: Number(e.target.value) })
+                    }
+                  >
+                    {MULTIPLIERS.map((x) => (
+                      <option key={x} value={x}>
+                        ×{x}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {!matches.data?.length && (
+          <p className="text-slate-500">Нет матчей на эту дату.</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function ScorerResult({ roomId }: { roomId: string }) {
+  const qc = useQueryClient();
+  const [scorer, setScorer] = useState<{ id: number | null; name: string | null }>({
+    id: null,
+    name: null,
+  });
+  const award = useMutation({
+    mutationFn: () => api.scorerResult(roomId, scorer.id!, scorer.name!),
+    onSuccess: (r: any) => {
+      alert(`Начислено игрокам: ${r.awarded}`);
+      qc.invalidateQueries();
+    },
+    onError: (e: any) => alert(e.response?.data?.detail || "Ошибка"),
+  });
+
+  return (
+    <section className="card max-w-lg space-y-3">
+      <h2 className="text-lg font-semibold">Лучший бомбардир турнира</h2>
+      <p className="text-sm text-slate-500">
+        Выберите итогового бомбардира и начислите очки всем, кто его угадал —
+        только в этом соревновании. Победитель турнира начисляется автоматически
+        при пересчёте после финала.
+      </p>
+      <PlayerSearch value={scorer} onSelect={(id, name) => setScorer({ id, name })} />
+      <button
+        className="btn-primary"
+        disabled={!scorer.id || award.isPending}
+        onClick={() => award.mutate()}
+      >
+        {award.isPending ? "Начисление…" : "Начислить очки за бомбардира"}
+      </button>
+    </section>
+  );
+}
+
 export default function RoomAdmin() {
   const { roomId } = useParams<{ roomId: string }>();
   const isSuper = useAuth((s) => s.isSuperadmin());
@@ -293,6 +451,8 @@ export default function RoomAdmin() {
         </h1>
       </div>
       <Members roomId={roomId!} />
+      <Multipliers roomId={roomId!} />
+      <ScorerResult roomId={roomId!} />
       <RoomPassword roomId={roomId!} />
       {room.data && <RulesText room={room.data} />}
       {isSuper && room.data && <ScoringRules room={room.data} />}

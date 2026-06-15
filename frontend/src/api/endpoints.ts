@@ -328,11 +328,14 @@ export const api = {
     client
       .post(`/matches/${id}/result`, { home_score_ft: home, away_score_ft: away })
       .then((x) => x.data),
-  setMatchMultiplier: (id: string, multiplier: number) =>
-    client.patch(`/matches/${id}/multiplier`, { multiplier }).then((x) => x.data),
-  setTourMultiplier: (date: string, multiplier: number) =>
+  // Коэффициенты — свойство комнаты, задаёт админ комнаты.
+  setMatchMultiplier: (roomId: string, id: string, multiplier: number) =>
     client
-      .patch(`/matches/tour/${date}/multiplier`, { multiplier })
+      .patch(`${r(roomId)}/matches/${id}/multiplier`, { multiplier })
+      .then((x) => x.data),
+  setTourMultiplier: (roomId: string, date: string, multiplier: number) =>
+    client
+      .patch(`${r(roomId)}/matches/tour/${date}/multiplier`, { multiplier })
       .then((x) => x.data),
 
   // ---- predictions (room-scoped) ----
@@ -380,11 +383,15 @@ export const api = {
   leaderboardMe: (roomId: string) =>
     client.get<LeaderboardEntry | null>(`${r(roomId)}/leaderboard/me`).then((x) => x.data),
 
-  // ---- global admin ----
+  // ---- scorer result (room admin) ----
+  scorerResult: (roomId: string, player_api_id: number, player_name: string) =>
+    client
+      .post(`${r(roomId)}/special-prediction/scorer-result`, { player_api_id, player_name })
+      .then((x) => x.data),
+
+  // ---- global admin (superadmin only) ----
   sync: () => client.post("/admin/sync").then((x) => x.data),
   recalculate: () => client.post("/admin/recalculate").then((x) => x.data),
-  scorerResult: (player_api_id: number, player_name: string) =>
-    client.post("/admin/scorer-result", { player_api_id, player_name }).then((x) => x.data),
   transferSuperadmin: (target_user_id: string) =>
     client.post("/admin/superadmin/transfer", { target_user_id }).then((x) => x.data),
   auditLog: (params: { event_type?: string; limit?: number; offset?: number }) =>

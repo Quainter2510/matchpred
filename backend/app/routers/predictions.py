@@ -17,6 +17,7 @@ from app.schemas.prediction import (
     TourPointsOut,
 )
 from app.services.predictions import set_prediction
+from app.services.recalc import room_multipliers_map
 from app.services.simulation import SimContext, effective_result, get_sim, points_for
 
 router = APIRouter(prefix="/rooms/{room_id}/predictions", tags=["predictions"])
@@ -69,11 +70,12 @@ async def my_predictions(
             )
         )
     ).all()
+    mults = await room_multipliers_map(db, ctx.room.id) if sim.active else {}
     out = []
     for p, m in rows:
         if sim.active:
             points, is_exact = points_for(
-                p.predicted_home, p.predicted_away, m, ctx.room, sim
+                p.predicted_home, p.predicted_away, m, ctx.room, sim, mults.get(m.id, 1)
             )
         else:
             points, is_exact = p.points_awarded, p.is_exact
@@ -108,10 +110,11 @@ async def tour_points(
         )
     ).all()
     if sim.active:
+        mults = await room_multipliers_map(db, ctx.room.id)
         points = exact = 0
         for p, m in rows:
             pts, is_exact = points_for(
-                p.predicted_home, p.predicted_away, m, ctx.room, sim
+                p.predicted_home, p.predicted_away, m, ctx.room, sim, mults.get(m.id, 1)
             )
             points += pts or 0
             exact += 1 if is_exact else 0
@@ -131,7 +134,7 @@ async def tour_leaderboard(
     """Итоги тура: все участники комнаты с очками за завершённые матчи дня
     (пропущенный прогноз = 0 очков) и раскрывающимся списком матчей.
     Чужие прогнозы на не начавшиеся матчи скрыты (predicted_* = null);
-    свои и для админа комнаты — видны всегда. Сортировка: очки → точные → ник."""
+    свои — видны всегда, чужие раскрывает только суперадмин. Сортировка: очки → точные → ник."""
     matches = (
         await db.execute(
             select(Match)
@@ -160,6 +163,7 @@ async def tour_leaderboard(
         )
     ).all()
 
+    mults = await room_multipliers_map(db, ctx.room.id) if sim.active else {}
     now = sim.effective_now()
     out = []
     for member, user in members:
@@ -174,15 +178,17 @@ async def tour_leaderboard(
             else:
                 status_, home, away = m.status, m.home_score_ft, m.away_score_ft
             started = m.kickoff_at <= now
-            # Чужой прогноз до начала матча скрыт.
+            # Чужой прогноз до начала матча скрыт. Раскрывает только суперадмин;
+            # админ комнаты такой привилегии больше не имеет.
             visible = p is not None and (
-                started or user.id == ctx.user.id or ctx.is_admin
+                started or user.id == ctx.user.id or ctx.is_superadmin
             )
             pts = is_exact = None
             if p is not None:
                 if sim.active:
                     pts, is_exact = points_for(
-                        p.predicted_home, p.predicted_away, m, ctx.room, sim
+                        p.predicted_home, p.predicted_away, m, ctx.room, sim,
+                        mults.get(m.id, 1),
                     )
                 else:
                     pts, is_exact = p.points_awarded, p.is_exact

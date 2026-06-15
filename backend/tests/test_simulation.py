@@ -14,7 +14,7 @@ from app.services.simulation import (
 NOW = datetime(2026, 6, 20, 18, 0, tzinfo=timezone.utc)
 
 
-def make_match(*, kickoff_at, status="scheduled", home=None, away=None, multiplier=1):
+def make_match(*, kickoff_at, status="scheduled", home=None, away=None):
     return Match(
         id=uuid.uuid4(),
         match_date=kickoff_at.date(),
@@ -25,7 +25,6 @@ def make_match(*, kickoff_at, status="scheduled", home=None, away=None, multipli
         status=status,
         home_score_ft=home,
         away_score_ft=away,
-        points_multiplier=multiplier,
     )
 
 
@@ -154,12 +153,10 @@ def test_points_apply_multiplier_and_zero_voids_exact():
         status="finished",
         home=2,
         away=1,
-        multiplier=3,
     )
-    assert points_for(2, 1, m, make_room(), sim) == (15, True)
-
-    m.points_multiplier = 0
-    assert points_for(2, 1, m, make_room(), sim) == (0, False)
+    # Коэффициент — теперь свойство комнаты, передаётся в points_for параметром.
+    assert points_for(2, 1, m, make_room(), sim, 3) == (15, True)
+    assert points_for(2, 1, m, make_room(), sim, 0) == (0, False)
 
 
 def test_points_for_fake_result_consistent_with_effective():

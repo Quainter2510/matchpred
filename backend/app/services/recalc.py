@@ -11,7 +11,14 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Match, Prediction, Room, RoomMember, SpecialPrediction
+from app.models import (
+    Match,
+    Prediction,
+    Room,
+    RoomMatchMultiplier,
+    RoomMember,
+    SpecialPrediction,
+)
 from app.redis_client import invalidate_leaderboard_cache
 from app.services.scoring import determine_winner, score_prediction
 
@@ -19,6 +26,34 @@ from app.services.scoring import determine_winner, score_prediction
 async def _rooms_map(db: AsyncSession) -> dict[uuid.UUID, Room]:
     rooms = (await db.execute(select(Room))).scalars().all()
     return {r.id: r for r in rooms}
+
+
+async def match_multipliers_map(
+    db: AsyncSession, match_id: uuid.UUID
+) -> dict[uuid.UUID, int]:
+    """room_id → коэффициент для матча (отсутствие строки = 1)."""
+    rows = (
+        await db.execute(
+            select(RoomMatchMultiplier).where(
+                RoomMatchMultiplier.match_id == match_id
+            )
+        )
+    ).scalars().all()
+    return {r.room_id: r.multiplier for r in rows}
+
+
+async def room_multipliers_map(
+    db: AsyncSession, room_id: uuid.UUID
+) -> dict[uuid.UUID, int]:
+    """match_id → коэффициент комнаты (отсутствие строки = 1)."""
+    rows = (
+        await db.execute(
+            select(RoomMatchMultiplier).where(
+                RoomMatchMultiplier.room_id == room_id
+            )
+        )
+    ).scalars().all()
+    return {r.match_id: r.multiplier for r in rows}
 
 
 async def _bump_member(
@@ -41,6 +76,7 @@ async def score_match(db: AsyncSession, match: Match) -> int:
         return 0
 
     rooms = await _rooms_map(db)
+    mults = await match_multipliers_map(db, match.id)
     rows = (
         await db.execute(
             select(Prediction).where(
@@ -64,10 +100,11 @@ async def score_match(db: AsyncSession, match: Match) -> int:
             points_diff=room.points_diff,
             points_outcome=room.points_outcome,
         )
-        # Бонусный коэффициент матча/тура: ×2, ×3 или ×0 (аннулирование).
+        # Бонусный коэффициент комнаты для матча: ×2, ×3 или ×0 (аннулирование).
         # При ×0 точный счёт не идёт и в тайбрейк.
-        points *= match.points_multiplier
-        if match.points_multiplier == 0:
+        multiplier = mults.get(pred.room_id, 1)
+        points *= multiplier
+        if multiplier == 0:
             is_exact = False
         pred.points_awarded = points
         pred.is_exact = is_exact
@@ -111,6 +148,41 @@ async def rescore_match(db: AsyncSession, match: Match) -> int:
         reset += 1
 
     if reset:
+        await invalidate_leaderboard_cache()
+    return await score_match(db, match)
+
+
+async def rescore_match_in_room(
+    db: AsyncSession, match: Match, room_id: uuid.UUID
+) -> int:
+    """Пересчитать матч **только в одной комнате** — для смены коэффициента
+    админом комнаты на завершённом матче. Снимает ранее начисленные очки этой
+    комнаты, обнуляет их, затем `score_match` начисляет заново (он берёт только
+    строки с points_awarded IS NULL, т.е. фактически лишь эту комнату).
+    Архивная комната заморожена."""
+    room = await db.get(Room, room_id)
+    if not room or not room.is_active:
+        return 0
+    rows = (
+        await db.execute(
+            select(Prediction).where(
+                Prediction.match_id == match.id,
+                Prediction.room_id == room_id,
+                Prediction.points_awarded.is_not(None),
+            )
+        )
+    ).scalars().all()
+    for pred in rows:
+        await _bump_member(
+            db,
+            room_id,
+            pred.user_id,
+            -(pred.points_awarded or 0),
+            -1 if pred.is_exact else 0,
+        )
+        pred.points_awarded = None
+        pred.is_exact = None
+    if rows:
         await invalidate_leaderboard_cache()
     return await score_match(db, match)
 
@@ -170,19 +242,25 @@ async def _score_champion(db: AsyncSession, finished: list[Match]) -> int:
     return awarded
 
 
-async def score_top_scorer(db: AsyncSession, player_api_id: int) -> int:
-    """Award each active room's scorer points to whoever picked the top scorer."""
-    rooms = await _rooms_map(db)
+async def score_top_scorer(
+    db: AsyncSession, room_id: uuid.UUID, player_api_id: int
+) -> int:
+    """Начислить очки за бомбардира **в одной комнате**: тем, кто угадал, —
+    room.points_scorer, остальным 0. Идемпотентно (только scorer_points IS NULL).
+    Комната определяет бомбардира самостоятельно."""
+    room = await db.get(Room, room_id)
+    if not room or not room.is_active:
+        return 0
     rows = (
         await db.execute(
-            select(SpecialPrediction).where(SpecialPrediction.scorer_points.is_(None))
+            select(SpecialPrediction).where(
+                SpecialPrediction.room_id == room_id,
+                SpecialPrediction.scorer_points.is_(None),
+            )
         )
     ).scalars().all()
     awarded = 0
     for sp in rows:
-        room = rooms.get(sp.room_id)
-        if not room or not room.is_active:
-            continue
         pts = room.points_scorer if sp.top_scorer_api_id == player_api_id else 0
         sp.scorer_points = pts
         if pts:

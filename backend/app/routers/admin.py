@@ -10,12 +10,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.dependencies import require_any_admin, require_superadmin
+from app.dependencies import require_superadmin
 from app.models import AuditLog, User
 from app.schemas.admin import AuditLogOut, TransferRequest
-from app.schemas.special import ScorerResultRequest
 from app.services import audit, football_api
-from app.services.recalc import recalculate_all, score_top_scorer
+from app.services.recalc import recalculate_all
 from app.services.sync import apply_fixtures
 
 router = APIRouter(tags=["admin"])
@@ -47,10 +46,10 @@ EVENT_LABELS_RU = {
 }
 
 
-# ---------------- Sync & recalc (global; any room admin) ----------------
+# ---------------- Sync & recalc (global; superadmin only) ----------------
 @router.post("/admin/sync")
 async def sync_api(
-    user: User = Depends(require_any_admin), db: AsyncSession = Depends(get_db)
+    user: User = Depends(require_superadmin), db: AsyncSession = Depends(get_db)
 ):
     try:
         fixtures = await football_api.fetch_fixtures()
@@ -73,7 +72,7 @@ async def sync_api(
 
 @router.post("/admin/recalculate")
 async def recalculate(
-    user: User = Depends(require_any_admin), db: AsyncSession = Depends(get_db)
+    user: User = Depends(require_superadmin), db: AsyncSession = Depends(get_db)
 ):
     summary = await recalculate_all(db)
     await audit.log_event(
@@ -85,28 +84,6 @@ async def recalculate(
     )
     await db.commit()
     return summary
-
-
-@router.post("/admin/scorer-result")
-async def scorer_result(
-    payload: ScorerResultRequest,
-    user: User = Depends(require_any_admin),
-    db: AsyncSession = Depends(get_db),
-):
-    awarded = await score_top_scorer(db, payload.player_api_id)
-    await audit.log_event(
-        db,
-        "scorer_result_set",
-        actor_id=user.id,
-        actor_nickname=user.nickname,
-        details={
-            "player_api_id": payload.player_api_id,
-            "player_name": payload.player_name,
-            "awarded": awarded,
-        },
-    )
-    await db.commit()
-    return {"awarded": awarded}
 
 
 # ---------------- Superadmin ----------------

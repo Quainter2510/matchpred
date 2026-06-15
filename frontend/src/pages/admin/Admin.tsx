@@ -3,15 +3,15 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../../store/auth";
 import { useViewAs } from "../../store/viewAs";
 import AdminMatches from "./AdminMatches";
-import AdminSpecial from "./AdminSpecial";
 import AdminSettings from "./AdminSettings";
 import AdminAuditLog from "./AdminAuditLog";
 import AdminSimulation from "./AdminSimulation";
 
-type Tab = "matches" | "special" | "recalc" | "audit" | "sim";
+type Tab = "matches" | "recalc" | "audit" | "sim";
 
-// Global admin panel: matches, results, scorer and recalculation are shared
-// across all rooms. Members and room passwords are managed inside each room.
+// Global admin panel (superadmin only): matches/results, recalculation, audit
+// log and simulation are shared across all rooms. Per-room settings —
+// multipliers, scorer, members, password — are managed inside each room.
 export default function Admin() {
   const isSuper = useAuth((s) => s.isSuperadmin());
   const { adminMode, setAdminMode } = useViewAs();
@@ -25,7 +25,6 @@ export default function Admin() {
 
   const tabs: { id: Tab; label: string; super?: boolean }[] = [
     { id: "matches", label: "Матчи и результаты" },
-    { id: "special", label: "Бомбардир" },
     { id: "recalc", label: "Пересчёт" },
     { id: "audit", label: "Журнал", super: true },
     { id: "sim", label: "Симуляция", super: true },
@@ -79,7 +78,6 @@ export default function Admin() {
       </div>
 
       {tab === "matches" && <AdminMatches />}
-      {tab === "special" && <AdminSpecial />}
       {tab === "recalc" && <AdminSettings />}
       {tab === "audit" && isSuper && <AdminAuditLog />}
       {tab === "sim" && isSuper && <AdminSimulation />}

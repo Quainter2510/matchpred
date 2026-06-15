@@ -10,16 +10,17 @@ const nav = [
 ];
 
 export default function Sidebar() {
-  const { user, isAdmin, logout } = useAuth();
+  const { user, isSuperadmin, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [menu, setMenu] = useState(false);
 
   // Аноним в лобби видит только «Соревнования» и кнопку «Войти».
-  // Пункт «Админ» виден всегда (для админов) — в том числе суперадмину в
-  // режиме игрока: там живёт чекбокс включения полных прав.
+  // Глобальная панель «Админ» — только суперадмину (в том числе в режиме
+  // игрока: там живёт чекбокс включения полных прав). Управление своей
+  // комнатой у админов комнат — внутри самой комнаты.
   const items = user ? [...nav] : [nav[0]];
-  if (user && isAdmin()) items.push({ to: "/admin", label: "Админ", icon: "⚙️" });
+  if (user && isSuperadmin()) items.push({ to: "/admin", label: "Админ", icon: "⚙️" });
 
   const handleLogout = async () => {
     await logout();

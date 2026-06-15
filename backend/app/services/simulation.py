@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_current_user
 from app.models import Match, Prediction, Room, SpecialPrediction, User
+from app.services.recalc import room_multipliers_map
 from app.services.scoring import score_prediction
 
 SIM_HEADER = "X-Sim-Now"
@@ -111,10 +112,13 @@ def points_for(
     match: Match,
     room: Room,
     sim: SimContext,
+    multiplier: int = 1,
 ) -> tuple[int | None, bool | None]:
     """Points a prediction earns at the simulated moment (None while the match
     is unfinished in the simulated world). Mirrors recalc.score_match: room
-    rules, then the match multiplier; ×0 voids the exact-score tiebreak."""
+    rules, then the room's match multiplier; ×0 voids the exact-score tiebreak.
+    The multiplier is per-room (see RoomMatchMultiplier) and passed in by the
+    caller — default 1 when the room has no override for this match."""
     status, home, away = effective_result(match, sim)
     if status != "finished" or home is None or away is None:
         return None, None
@@ -127,8 +131,8 @@ def points_for(
         points_diff=room.points_diff,
         points_outcome=room.points_outcome,
     )
-    points *= match.points_multiplier
-    if match.points_multiplier == 0:
+    points *= multiplier
+    if multiplier == 0:
         is_exact = False
     return points, is_exact
 
@@ -142,6 +146,7 @@ async def room_sim_totals(
     matches = {
         m.id: m for m in (await db.execute(select(Match))).scalars().all()
     }
+    mults = await room_multipliers_map(db, room.id)
     preds = (
         await db.execute(select(Prediction).where(Prediction.room_id == room.id))
     ).scalars().all()
@@ -152,7 +157,8 @@ async def room_sim_totals(
         if not match:
             continue
         points, is_exact = points_for(
-            p.predicted_home, p.predicted_away, match, room, sim
+            p.predicted_home, p.predicted_away, match, room, sim,
+            mults.get(p.match_id, 1),
         )
         if points is None:
             continue

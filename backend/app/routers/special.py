@@ -5,15 +5,22 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.dependencies import RoomContext, get_current_user, require_room_member
+from app.dependencies import (
+    RoomContext,
+    get_current_user,
+    require_room_admin,
+    require_room_member,
+)
 from app.models import SpecialPrediction, User
 from app.schemas.special import (
     PlayerSearchItem,
+    ScorerResultRequest,
     SpecialPredictionOut,
     SpecialPredictionPublic,
     SpecialPredictionUpdate,
 )
 from app.services import audit, football_api
+from app.services.recalc import score_top_scorer
 from app.services.simulation import SimContext, get_sim
 
 router = APIRouter(prefix="/rooms/{room_id}/special-prediction", tags=["special"])
@@ -120,7 +127,7 @@ async def all_special(
     sim: SimContext = Depends(get_sim),
     db: AsyncSession = Depends(get_db),
 ):
-    if not _locked(ctx.room, sim) and not ctx.is_admin:
+    if not _locked(ctx.room, sim) and not ctx.is_superadmin:
         raise HTTPException(
             status.HTTP_403_FORBIDDEN, "Special predictions hidden until deadline"
         )
@@ -143,6 +150,32 @@ async def all_special(
         )
         for sp, u in rows
     ]
+
+
+@router.post("/scorer-result")
+async def scorer_result(
+    payload: ScorerResultRequest,
+    ctx: RoomContext = Depends(require_room_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Итоговый бомбардир комнаты: начислить очки тем, кто его угадал, **только
+    в этой комнате**. Определяется админом комнаты."""
+    awarded = await score_top_scorer(db, ctx.room.id, payload.player_api_id)
+    await audit.log_event(
+        db,
+        "scorer_result_set",
+        actor_id=ctx.user.id,
+        actor_nickname=ctx.user.nickname,
+        target_id=ctx.room.id,
+        details={
+            "room_id": str(ctx.room.id),
+            "player_api_id": payload.player_api_id,
+            "player_name": payload.player_name,
+            "awarded": awarded,
+        },
+    )
+    await db.commit()
+    return {"awarded": awarded}
 
 
 @players_router.get("/players/search", response_model=list[PlayerSearchItem])

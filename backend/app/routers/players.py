@@ -9,6 +9,7 @@ from app.database import get_db
 from app.dependencies import RoomContext, require_room_member
 from app.models import Match, Prediction, RoomMember, SpecialPrediction, User
 from app.schemas.player import PlayerProfile, PlayerProfileMatch
+from app.services.recalc import room_multipliers_map
 from app.services.simulation import (
     SimContext,
     effective_result,
@@ -34,6 +35,7 @@ async def player_profile(
     target = await db.get(User, uid)
 
     sim_totals = await room_sim_totals(db, ctx.room, sim) if sim.active else None
+    mults = await room_multipliers_map(db, room_id) if sim.active else {}
 
     # Place in the room standings (same ordering as the leaderboard).
     rows_order = (
@@ -61,14 +63,15 @@ async def player_profile(
     place = ordered.index(uid) + 1 if uid in ordered else None
 
     # Reveal predictions only for started matches, unless it's the viewer's own
-    # profile or the viewer is a room admin.
+    # profile or the viewer is the superadmin. A room admin no longer sees
+    # others' predictions before kickoff.
     is_self = uid == ctx.user.id
-    reveal = is_self or ctx.is_admin
+    reveal = is_self or ctx.is_superadmin
     now = sim.effective_now() if sim.active else datetime.now(timezone.utc)
 
     # Special predictions (champion / top scorer): shown only after the
-    # tournament starts; admins always.
-    specials_revealed = ctx.is_admin or now >= ctx.room.first_match_at
+    # tournament starts; the superadmin always.
+    specials_revealed = ctx.is_superadmin or now >= ctx.room.first_match_at
     sp = await db.scalar(
         select(SpecialPrediction).where(
             SpecialPrediction.room_id == room_id,
@@ -102,7 +105,10 @@ async def player_profile(
         if sim.active:
             eff_status, eff_home, eff_away = effective_result(m, sim)
             points, is_exact = (
-                points_for(pred.predicted_home, pred.predicted_away, m, ctx.room, sim)
+                points_for(
+                    pred.predicted_home, pred.predicted_away, m, ctx.room, sim,
+                    mults.get(m.id, 1),
+                )
                 if pred is not None
                 else (None, None)
             )

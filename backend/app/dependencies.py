@@ -62,25 +62,13 @@ async def is_any_admin(db: AsyncSession, user: User) -> bool:
     return found is not None
 
 
-async def require_any_admin(
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> User:
-    """Gate for GLOBAL match operations (results, sync, recalculate). Match
-    results are shared facts, so any room admin — or the superadmin — may set
-    them; the result then scores every room."""
-    if not await is_any_admin(db, user):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Admin access required")
-    return user
-
-
 # ---------------- Room-scoped access ----------------
 # Режим «как обычный пользователь»: суперадмин может отправить заголовок
 # X-View-As: player — тогда в room-контексте он считается обычным участником
 # (прячутся чужие прогнозы до начала, заполняемость туров; управление комнатой
 # отвечает 403). Для остальных ролей заголовок молча игнорируется. Глобальная
-# панель (require_any_admin / require_superadmin) не затрагивается — иначе
-# нельзя было бы выключить режим.
+# панель (require_superadmin) не затрагивается — иначе нельзя было бы
+# выключить режим.
 VIEW_AS_HEADER = "X-View-As"
 
 
@@ -97,6 +85,10 @@ class RoomContext:
     room: Room
     member: RoomMember | None  # None when a superadmin acts without membership
     is_admin: bool
+    # True только для суперадмина (не в режиме X-View-As: player). Управляет
+    # раскрытием чужих прогнозов/спецпрогнозов: админ комнаты их НЕ видит,
+    # суперадмин (в режиме суперадмина) — видит.
+    is_superadmin: bool
 
 
 async def _load_room_ctx(
@@ -106,11 +98,17 @@ async def _load_room_ctx(
     if not room:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Room not found")
     member = await db.get(RoomMember, (room_id, user.id))
-    is_admin = not as_player and (
-        user.system_role == "superadmin"
-        or (member is not None and member.room_role == "admin")
+    is_superadmin = not as_player and user.system_role == "superadmin"
+    is_admin = is_superadmin or (
+        not as_player and member is not None and member.room_role == "admin"
     )
-    return RoomContext(user=user, room=room, member=member, is_admin=is_admin)
+    return RoomContext(
+        user=user,
+        room=room,
+        member=member,
+        is_admin=is_admin,
+        is_superadmin=is_superadmin,
+    )
 
 
 async def require_room_member(
