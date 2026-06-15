@@ -1,14 +1,72 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { api, MatchDay, RoomScoring } from "../api/endpoints";
+import { api, MatchDay, RoomScoring, StandingsMatch } from "../api/endpoints";
 import LeaderboardTable from "../components/LeaderboardTable";
 import MultiplierBadge from "../components/MultiplierBadge";
 import WcStandings from "../components/WcStandings";
+import Flag from "../components/Flag";
 import SpecialPredictionCard from "./SpecialPredictionCard";
 import { useAuth } from "../store/auth";
 import { useViewAs } from "../store/viewAs";
+import { findCountry } from "../utils/countries";
 import { formatDate, isPast, nowMs } from "../utils/dates";
+
+// Маленькие ссылки на 3 последних начавшихся матча (флаги + счёт) над вкладками.
+// Данные берём из standings (тот же queryKey — кэш общий с вкладкой ЧМ-2026).
+function RecentResults({ roomId }: { roomId: string }) {
+  const { data } = useQuery({
+    queryKey: ["standings", roomId],
+    queryFn: () => api.standings(roomId),
+    refetchInterval: 5 * 60_000,
+  });
+  if (!data) return null;
+
+  const all: StandingsMatch[] = [
+    ...data.groups.flatMap((g) => g.matches),
+    ...data.playoff.flatMap((p) => p.matches),
+  ];
+  const now = nowMs();
+  const recent = all
+    .filter((m) => new Date(m.kickoff_at).getTime() <= now)
+    .sort(
+      (a, b) =>
+        new Date(b.kickoff_at).getTime() - new Date(a.kickoff_at).getTime()
+    )
+    .slice(0, 3)
+    .reverse(); // самый свежий — справа
+  if (!recent.length) return null;
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {recent.map((m) => {
+        const hc = findCountry(m.home_team);
+        const ac = findCountry(m.away_team);
+        const live = m.status === "live";
+        const score =
+          m.home_score != null && m.away_score != null
+            ? `${m.home_score}:${m.away_score}`
+            : "–";
+        return (
+          <Link
+            key={m.id}
+            to={`/room/${roomId}/match/${m.id}/predictions`}
+            title={`${m.home_team} ${score} ${m.away_team}`}
+            className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2 py-0.5 text-xs hover:bg-slate-50"
+          >
+            {hc ? <Flag code={hc.code} title={m.home_team} /> : null}
+            <span
+              className={`font-semibold tabular-nums ${live ? "text-red-600" : ""}`}
+            >
+              {score}
+            </span>
+            {ac ? <Flag code={ac.code} title={m.away_team} /> : null}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
 
 const DAY_MS = 86400000;
 
@@ -180,6 +238,8 @@ export default function Tournament() {
           доступна только для просмотра.
         </div>
       )}
+
+      <RecentResults roomId={roomId!} />
 
       <div className="flex gap-2 border-b">
         {([
