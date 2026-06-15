@@ -52,34 +52,19 @@ function DistributionBar({
   ];
 
   return (
-    <div className="mb-4 space-y-1.5">
-      <div className="flex h-3 w-full overflow-hidden rounded-full bg-slate-100">
-        {segs.map(
-          (s, i) =>
-            s.n > 0 && (
-              <div
-                key={i}
-                className={s.color}
-                style={{ width: pct(s.n) }}
-                title={`${s.label}: ${s.n} (${pct(s.n)})`}
-              />
-            )
-        )}
-      </div>
-      <div className="grid grid-cols-3 gap-2 text-xs">
-        {segs.map((s, i) => (
-          <div key={i} className="flex min-w-0 items-center gap-1.5">
-            <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${s.color}`} />
-            <span className="min-w-0 truncate text-slate-600">
-              {i === 1 ? "Ничья" : <TeamName team={s.label} />}
-            </span>
-            <span className="ml-auto shrink-0 font-medium tabular-nums">
-              {s.n}
-              <span className="ml-1 text-slate-400">{pct(s.n)}</span>
-            </span>
+    <div className="mb-4 flex h-7 w-full overflow-hidden rounded-lg bg-slate-100 text-sm font-bold tabular-nums text-white">
+      {segs.map((s, i) =>
+        s.n > 0 ? (
+          <div
+            key={i}
+            className={`flex items-center justify-center ${s.color}`}
+            style={{ width: pct(s.n) }}
+            title={`${s.label}: ${s.n} (${pct(s.n)})`}
+          >
+            {s.n}
           </div>
-        ))}
-      </div>
+        ) : null
+      )}
     </div>
   );
 }
