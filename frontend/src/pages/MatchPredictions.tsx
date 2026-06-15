@@ -19,6 +19,70 @@ function byPoints(a: PlayerPrediction, b: PlayerPrediction): number {
   return a.nickname.localeCompare(b.nickname, "ru");
 }
 
+// Полоса распределения исходов: сколько прогнозов за победу 1-й команды,
+// ничью и победу 2-й. Считается по сделанным (видимым) прогнозам.
+function DistributionBar({
+  preds,
+  match,
+}: {
+  preds: PlayerPrediction[];
+  match: Match;
+}) {
+  const made = preds.filter(
+    (p) => p.predicted_home != null && p.predicted_away != null
+  );
+  const total = made.length;
+  if (!total) return null;
+
+  let home = 0;
+  let draw = 0;
+  let away = 0;
+  for (const p of made) {
+    const diff = p.predicted_home! - p.predicted_away!;
+    if (diff > 0) home++;
+    else if (diff < 0) away++;
+    else draw++;
+  }
+  const pct = (n: number) => `${Math.round((n / total) * 100)}%`;
+  const segs = [
+    { n: home, color: "bg-sky-500", label: match.home_team },
+    { n: draw, color: "bg-slate-400", label: "Ничья" },
+    { n: away, color: "bg-indigo-500", label: match.away_team },
+  ];
+
+  return (
+    <div className="mb-4 space-y-1.5">
+      <div className="flex h-3 w-full overflow-hidden rounded-full bg-slate-100">
+        {segs.map(
+          (s, i) =>
+            s.n > 0 && (
+              <div
+                key={i}
+                className={s.color}
+                style={{ width: pct(s.n) }}
+                title={`${s.label}: ${s.n} (${pct(s.n)})`}
+              />
+            )
+        )}
+      </div>
+      <div className="grid grid-cols-3 gap-2 text-xs">
+        {segs.map((s, i) => (
+          <div key={i} className="flex min-w-0 items-center gap-1.5">
+            <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${s.color}`} />
+            <span className="min-w-0 truncate text-slate-600">
+              {i === 1 ? "Ничья" : <TeamName team={s.label} />}
+            </span>
+            <span className="ml-auto shrink-0 font-medium tabular-nums">
+              {s.n}
+              <span className="ml-1 text-slate-400">{pct(s.n)}</span>
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function isFinished(m: Match | undefined): boolean {
   return (
     !!m &&
@@ -90,6 +154,10 @@ export default function MatchPredictions() {
         ) : preds.isLoading ? (
           <p className="text-slate-500">Загрузка…</p>
         ) : (
+          <>
+          {match.data && (
+            <DistributionBar preds={preds.data || []} match={match.data} />
+          )}
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b text-left text-slate-500">
@@ -139,6 +207,7 @@ export default function MatchPredictions() {
               ))}
             </tbody>
           </table>
+          </>
         )}
       </div>
     </div>
