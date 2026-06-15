@@ -76,7 +76,7 @@ function DistributionBar({
         s.n > 0 ? (
           <div
             key={i}
-            className={`flex items-center justify-center gap-1 ${s.color}`}
+            className={`flex min-w-[2.75rem] items-center justify-center gap-1 overflow-hidden ${s.color}`}
             style={{ width: pct(s.n) }}
             title={`${s.label}: ${s.n} (${pct(s.n)})`}
           >
