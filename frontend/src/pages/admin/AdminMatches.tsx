@@ -8,8 +8,14 @@ function ResultRow({ match }: { match: Match }) {
   const qc = useQueryClient();
   const [h, setH] = useState<string>(match.home_score_ft?.toString() ?? "");
   const [a, setA] = useState<string>(match.away_score_ft?.toString() ?? "");
+  const [winner, setWinner] = useState<string>(match.winner_team ?? "");
+  // Финал по пенальти: основное время — ничья, но чемпион должен быть.
+  const isFinal = match.stage.toLowerCase() === "final";
+  const isDraw = h !== "" && a !== "" && Number(h) === Number(a);
+  const needWinner = isFinal && isDraw;
   const save = useMutation({
-    mutationFn: () => api.setResult(match.id, Number(h), Number(a)),
+    mutationFn: () =>
+      api.setResult(match.id, Number(h), Number(a), needWinner ? winner || null : null),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin-matches"] });
       qc.invalidateQueries({ queryKey: ["leaderboard"] });
@@ -27,6 +33,20 @@ function ResultRow({ match }: { match: Match }) {
           <span className="text-slate-400">—</span>
           <TeamName team={match.away_team} />
         </span>
+        {needWinner && (
+          <div className="mt-1">
+            <select
+              className="rounded border px-1 py-0.5 text-xs"
+              title="Победитель по пенальти/допвремени (для чемпиона)"
+              value={winner}
+              onChange={(e) => setWinner(e.target.value)}
+            >
+              <option value="">Победитель (пенальти)…</option>
+              <option value={match.home_team}>{match.home_team}</option>
+              <option value={match.away_team}>{match.away_team}</option>
+            </select>
+          </div>
+        )}
       </td>
       <td>
         <input className="w-12 rounded border px-1 text-center" value={h} onChange={(e) => setH(e.target.value)} />
@@ -36,7 +56,7 @@ function ResultRow({ match }: { match: Match }) {
       <td>
         <button
           className="btn-primary px-2 py-1 text-sm"
-          disabled={h === "" || a === "" || save.isPending}
+          disabled={h === "" || a === "" || (needWinner && !winner) || save.isPending}
           onClick={() => save.mutate()}
         >
           {match.status === "finished" ? "Обновить" : "Ввести"}

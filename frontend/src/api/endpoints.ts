@@ -68,6 +68,7 @@ export interface Match {
   away_score_ft: number | null;
   status: string;
   points_multiplier: number;
+  winner_team: string | null;
   my_prediction: MyPrediction | null;
 }
 
@@ -324,9 +325,13 @@ export const api = {
   createMatch: (body: unknown) => client.post("/matches", body).then((x) => x.data),
   updateMatch: (id: string, body: unknown) =>
     client.patch(`/matches/${id}`, body).then((x) => x.data),
-  setResult: (id: string, home: number, away: number) =>
+  setResult: (id: string, home: number, away: number, winner_team?: string | null) =>
     client
-      .post(`/matches/${id}/result`, { home_score_ft: home, away_score_ft: away })
+      .post(`/matches/${id}/result`, {
+        home_score_ft: home,
+        away_score_ft: away,
+        winner_team: winner_team ?? null,
+      })
       .then((x) => x.data),
   // Коэффициенты — свойство комнаты, задаёт админ комнаты.
   setMatchMultiplier: (roomId: string, id: string, multiplier: number) =>

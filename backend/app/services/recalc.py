@@ -214,7 +214,11 @@ async def _score_champion(db: AsyncSession, finished: list[Match]) -> int:
     final = next((m for m in finished if "final" == (m.stage or "").lower()), None)
     if not final or final.home_score_ft is None or final.away_score_ft is None:
         return 0
-    winner = determine_winner(
+    # Чемпион — победитель финала при ЛЮБОМ исходе. Если основное время — ничья
+    # (победа по пенальти/допвремени), берём явного победителя из winner_team
+    # (из API-Football или указанного суперадмином). Прогнозы при этом по-
+    # прежнему считаются по основному времени.
+    winner = final.winner_team or determine_winner(
         final.home_team, final.away_team, final.home_score_ft, final.away_score_ft
     )
     if not winner:

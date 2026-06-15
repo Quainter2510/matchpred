@@ -71,6 +71,15 @@ def _normalize_fixture(fx: dict, groups: dict[str, str] | None = None) -> dict:
     group_name = None
     if groups and "group" in stage:
         group_name = groups.get(home) or groups.get(away)
+    # Победитель матча (флаг teams.*.winner учитывает пенальти/допвремя). Нужен
+    # для начисления чемпиона по финалу при ничьей в основное время. У ничьих
+    # без серии пенальти (группы) оба флага false/null — победителя нет.
+    if teams["home"].get("winner"):
+        winner_team = home
+    elif teams["away"].get("winner"):
+        winner_team = away
+    else:
+        winner_team = None
     return {
         "api_football_id": fixture["id"],
         "kickoff_at": kickoff,
@@ -81,6 +90,7 @@ def _normalize_fixture(fx: dict, groups: dict[str, str] | None = None) -> dict:
         "away_team": away,
         "home_score_ft": goals.get("home"),
         "away_score_ft": goals.get("away"),
+        "winner_team": winner_team,
         "status": _STATUS_MAP.get(raw_status, "scheduled"),
     }
 

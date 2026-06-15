@@ -41,6 +41,11 @@ class Match(Base):
     home_score_ft: Mapped[int | None] = mapped_column(Integer, nullable=True)
     away_score_ft: Mapped[int | None] = mapped_column(Integer, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="scheduled")
+    # Команда-победитель матча. Нужна ТОЛЬКО для начисления чемпиона по финалу,
+    # когда основное время — ничья (победа по пенальти/допвремени). Очки за
+    # прогнозы по-прежнему считаются строго по основному времени; счёт ET/PKS
+    # нигде не хранится — только сам факт «кто прошёл дальше».
+    winner_team: Mapped[str | None] = mapped_column(String(100), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

@@ -63,6 +63,7 @@ async def upsert_matches(db) -> tuple[int, str]:
             existing.home_team = fx["home_team"]
             existing.away_team = fx["away_team"]
             existing.status = fx["status"]
+            existing.winner_team = fx.get("winner_team")
         else:
             db.add(Match(**fx))
             created += 1

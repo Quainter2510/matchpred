@@ -26,6 +26,8 @@ class MatchOut(BaseModel):
     away_score_ft: int | None = None
     status: str
     points_multiplier: int = 1
+    # Победитель (для чемпиона при ничьей в финале); прогнозы — по основному времени.
+    winner_team: str | None = None
     my_prediction: MyPrediction | None = None
 
 
@@ -73,6 +75,9 @@ class MatchUpdate(BaseModel):
 class MatchResult(BaseModel):
     home_score_ft: int = Field(ge=0, le=50)
     away_score_ft: int = Field(ge=0, le=50)
+    # Победитель при ничьей в основное время (пенальти/допвремя) — нужен для
+    # начисления чемпиона по финалу. Должен совпадать с одной из команд матча.
+    winner_team: str | None = None
 
 
 class TeamFormMatch(BaseModel):

@@ -570,6 +570,20 @@ async def set_result(
     match.away_score_ft = payload.away_score_ft
     match.status = "finished"
 
+    # Победитель (для чемпиона по финалу при ничьей в основное время). Прогнозы
+    # считаются по основному времени и winner_team не затрагивает.
+    if payload.winner_team is not None:
+        if payload.winner_team not in (match.home_team, match.away_team):
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "winner_team must be one of the match teams",
+            )
+        match.winner_team = payload.winner_team
+    elif payload.home_score_ft != payload.away_score_ft:
+        # Решающий счёт — победитель однозначен, явный не нужен.
+        match.winner_team = None
+    # Иначе (ничья без указанного победителя) сохраняем прежнего (напр. из синка).
+
     # Scores every room's predictions for this match (results are global).
     # A corrected result takes back the old points and awards them anew.
     if score_changed:
@@ -582,6 +596,8 @@ async def set_result(
         "away": payload.away_score_ft,
         "scored": scored,
     }
+    if match.winner_team:
+        details["winner"] = match.winner_team
     if had_result:
         details["previous"] = prev
     await audit.log_event(

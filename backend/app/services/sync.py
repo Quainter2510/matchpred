@@ -57,6 +57,10 @@ async def apply_fixtures(db: AsyncSession, fixtures: list[dict]) -> dict:
         if fx["status"] in ("live", "finished"):
             existing.home_score_ft = fx["home_score_ft"]
             existing.away_score_ft = fx["away_score_ft"]
+        # Победитель (для чемпиона при ничьей в финале) появляется только у
+        # завершённого матча — не затираем его live-обновлениями.
+        if fx["status"] == "finished" and fx.get("winner_team"):
+            existing.winner_team = fx["winner_team"]
 
         if (existing.status, existing.home_score_ft, existing.away_score_ft) != (
             prev_status,
