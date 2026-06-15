@@ -52,7 +52,10 @@ class MultiplierUpdate(BaseModel):
 
 
 class MatchCreate(BaseModel):
-    match_date: date
+    # match_date больше не передаётся: тур вычисляется из kickoff_at
+    # (граница 10:00 МСК). Поле оставлено опциональным для совместимости —
+    # значение всё равно пересчитывается на бэкенде.
+    match_date: date | None = None
     kickoff_at: datetime
     stage: str = Field(max_length=40)
     home_team: str = Field(max_length=100)

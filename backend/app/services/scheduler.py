@@ -21,9 +21,11 @@ scheduler = AsyncIOScheduler(timezone="UTC")
 
 
 async def _should_poll() -> bool:
-    """True if there is anything worth polling for: a match today (UTC), a
-    match still marked live, or a recently kicked-off match that hasn't been
-    seen finishing yet (covers games crossing UTC midnight)."""
+    """True if there is anything worth polling for: a match whose tour date is
+    today (UTC), a match still marked live, or a recently kicked-off match that
+    hasn't been seen finishing yet. The live/recent-kickoff conditions are the
+    real safety net — match_date is the tour date (10:00 МСК boundary), so it is
+    only an approximate "are there games around now" gate."""
     now = datetime.now(timezone.utc)
     async with AsyncSessionLocal() as db:
         row = await db.scalar(

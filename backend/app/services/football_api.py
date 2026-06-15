@@ -10,6 +10,7 @@ import httpx
 
 from app.config import settings
 from app.services import players_catalog
+from app.services.tours import tour_date
 
 # Настоящая группа в /standings называется "Group A".."Group L". Кроме них там
 # бывают служебные таблицы вроде "Ranking of third-placed teams" — их игнорируем.
@@ -73,7 +74,7 @@ def _normalize_fixture(fx: dict, groups: dict[str, str] | None = None) -> dict:
     return {
         "api_football_id": fixture["id"],
         "kickoff_at": kickoff,
-        "match_date": kickoff.date(),
+        "match_date": tour_date(kickoff),
         "stage": stage,
         "group_name": group_name,
         "home_team": home,

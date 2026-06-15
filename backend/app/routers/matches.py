@@ -27,6 +27,7 @@ from app.schemas.match import (
 from app.services import audit
 from app.services.recalc import rescore_match, score_match
 from app.services.simulation import SimContext, effective_result, get_sim, points_for
+from app.services.tours import tour_date
 
 # Room-scoped match reads (attach the caller's prediction in this room).
 room_router = APIRouter(prefix="/rooms/{room_id}/matches", tags=["matches"])
@@ -385,7 +386,10 @@ async def create_match(
     user: User = Depends(require_any_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    match = Match(**payload.model_dump())
+    data = payload.model_dump(exclude_unset=True)
+    # Дата тура всегда производна от времени начала (тур = 10:00–10:00 МСК).
+    data["match_date"] = tour_date(payload.kickoff_at)
+    match = Match(**data)
     db.add(match)
     await db.commit()
     await db.refresh(match)
@@ -404,6 +408,9 @@ async def update_match(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Match not found")
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(match, field, value)
+    # Сдвиг времени начала переносит матч в тур по той же границе 10:00 МСК.
+    if payload.kickoff_at is not None:
+        match.match_date = tour_date(match.kickoff_at)
     await db.commit()
     await db.refresh(match)
     return _to_out(match, None)

@@ -73,6 +73,7 @@ backend/
 │       ├── oauth/             # telegram.py (HMAC-верификация), yandex.py
 │       ├── football_api.py    # клиент API-Football (httpx async)
 │       ├── scoring.py         # чистые функции начисления очков (unit-тесты обязательны)
+│       ├── tours.py           # tour_date: матч → дата тура (граница 10:00 МСК)
 │       ├── recalc.py          # оркестрация пересчёта по всем комнатам + rescore
 │       ├── simulation.py      # режим симуляции суперадмина (X-Sim-Now, read-only)
 │       ├── predictions.py     # set_prediction — общая запись прогноза (REST и боты)
@@ -194,7 +195,7 @@ frontend/
 |------|-----|---------|
 | id | UUID PK | |
 | api_football_id | INT UNIQUE NULLABLE | null если добавлен вручную |
-| match_date | DATE NOT NULL | группировка по «турам» |
+| match_date | DATE NOT NULL | дата тура — группировка по «турам»; производна от `kickoff_at` (см. `services/tours.py`), **не** календарная дата UTC |
 | kickoff_at | TIMESTAMPTZ NOT NULL | UTC, дедлайн прогноза |
 | stage | VARCHAR(40) NOT NULL | |
 | group_name | VARCHAR(20) NULLABLE | буква группы (из /standings) |
@@ -473,6 +474,10 @@ read-эндпоинты комнат (`matches`, `predictions`, `special-predict
 ---
 
 ## Бизнес-правила
+
+### Туры (футбольный день)
+
+Тур идёт **с 10:00 до 10:00 следующего дня по Москве (UTC+3)** и обозначается датой первого дня. Из-за большой разницы часовых поясов с площадками ЧМ группировка по календарной дате UTC рвала бы единый вечер матчей на две даты. Дата тура хранится в `matches.match_date` и **производна от `kickoff_at`**: `tour_date()` (`services/tours.py`, чистая функция, тесты `tests/test_tours.py`) сдвигает UTC-время на −7 ч (10:00 МСК = 07:00 UTC) и берёт дату. Применяется при синхронизации фикстур и при создании/редактировании матча админом. Вся группировка по турам (`/matches/days`, `predictions/tour/{date}`, `standings`, коэффициент тура) опирается на это поле.
 
 ### Прогнозы на матч
 
