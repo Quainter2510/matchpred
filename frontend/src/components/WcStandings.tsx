@@ -43,16 +43,16 @@ function GroupTable({ group }: { group: GroupStanding }) {
       <table className="w-full min-w-[22rem] text-xs sm:text-sm">
         <thead>
           <tr className="border-b text-slate-500">
-            <th className="w-24 py-1 pr-1 text-left sm:w-28">Команда</th>
+            <th className="w-28 py-1 pr-1 text-left sm:w-32">Команда</th>
             {order.map((_, i) => (
-              <th key={i} className="w-10 text-center">
+              <th key={i} className="w-8 text-center">
                 {i + 1}
               </th>
             ))}
-            <th className="w-10 text-center" title="Разница мячей">
+            <th className="w-8 text-center" title="Разница мячей">
               РМ
             </th>
-            <th className="w-10 text-center" title="Очки">
+            <th className="w-8 text-center" title="Очки">
               О
             </th>
           </tr>
