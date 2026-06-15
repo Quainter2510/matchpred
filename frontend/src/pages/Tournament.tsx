@@ -12,56 +12,105 @@ import { useViewAs } from "../store/viewAs";
 import { findCountry } from "../utils/countries";
 import { formatDate, isPast, nowMs } from "../utils/dates";
 
-// Маленькие ссылки на 3 последних начавшихся матча (флаги + счёт) над вкладками.
-// Данные берём из standings (тот же queryKey — кэш общий с вкладкой ЧМ-2026).
+// Ссылки на все начавшиеся матчи (флаги + счёт) над вкладками: самый свежий
+// слева, дальше листается вправо. На телефоне — свайпом, в браузере — кнопками
+// по краям. Скроллбар скрыт. Данные из standings (общий кэш с вкладкой ЧМ).
 function RecentResults({ roomId }: { roomId: string }) {
   const { data } = useQuery({
     queryKey: ["standings", roomId],
     queryFn: () => api.standings(roomId),
     refetchInterval: 5 * 60_000,
   });
-  if (!data) return null;
+  const scroller = useRef<HTMLDivElement>(null);
+  const [edges, setEdges] = useState({ start: true, end: true });
 
-  const all: StandingsMatch[] = [
-    ...data.groups.flatMap((g) => g.matches),
-    ...data.playoff.flatMap((p) => p.matches),
-  ];
   const now = nowMs();
-  const recent = all
-    .filter((m) => new Date(m.kickoff_at).getTime() <= now)
-    .sort(
-      (a, b) =>
-        new Date(b.kickoff_at).getTime() - new Date(a.kickoff_at).getTime()
-    ); // самый свежий — слева, дальше листать вправо
+  const recent: StandingsMatch[] = data
+    ? [
+        ...data.groups.flatMap((g) => g.matches),
+        ...data.playoff.flatMap((p) => p.matches),
+      ]
+        .filter((m) => new Date(m.kickoff_at).getTime() <= now)
+        .sort(
+          (a, b) =>
+            new Date(b.kickoff_at).getTime() - new Date(a.kickoff_at).getTime()
+        )
+    : [];
+
+  const updateEdges = () => {
+    const el = scroller.current;
+    if (!el) return;
+    setEdges({
+      start: el.scrollLeft <= 1,
+      end: el.scrollLeft + el.clientWidth >= el.scrollWidth - 1,
+    });
+  };
+  useEffect(updateEdges, [recent.length]);
+
   if (!recent.length) return null;
 
+  const scrollByPage = (dir: number) => {
+    const el = scroller.current;
+    if (el) el.scrollBy({ left: dir * el.clientWidth * 0.8, behavior: "smooth" });
+  };
+
+  const arrowBtn =
+    "absolute top-1/2 z-10 hidden h-7 w-7 -translate-y-1/2 items-center justify-center " +
+    "rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50 md:flex";
+
   return (
-    <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-1">
-      {recent.map((m) => {
-        const hc = findCountry(m.home_team);
-        const ac = findCountry(m.away_team);
-        const live = m.status === "live";
-        const score =
-          m.home_score != null && m.away_score != null
-            ? `${m.home_score}:${m.away_score}`
-            : "–";
-        return (
-          <Link
-            key={m.id}
-            to={`/room/${roomId}/match/${m.id}/predictions`}
-            title={`${m.home_team} ${score} ${m.away_team}`}
-            className="inline-flex shrink-0 items-center gap-1 rounded-full border border-slate-200 px-2 py-0.5 text-xs hover:bg-slate-50"
-          >
-            {hc ? <Flag code={hc.code} title={m.home_team} /> : null}
-            <span
-              className={`font-semibold tabular-nums ${live ? "text-red-600" : ""}`}
+    <div className="relative">
+      {!edges.start && (
+        <button
+          type="button"
+          aria-label="Предыдущие"
+          onClick={() => scrollByPage(-1)}
+          className={`${arrowBtn} left-0`}
+        >
+          ‹
+        </button>
+      )}
+      <div
+        ref={scroller}
+        onScroll={updateEdges}
+        className="flex items-center gap-2 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
+        {recent.map((m) => {
+          const hc = findCountry(m.home_team);
+          const ac = findCountry(m.away_team);
+          const live = m.status === "live";
+          const score =
+            m.home_score != null && m.away_score != null
+              ? `${m.home_score}:${m.away_score}`
+              : "–";
+          return (
+            <Link
+              key={m.id}
+              to={`/room/${roomId}/match/${m.id}/predictions`}
+              title={`${m.home_team} ${score} ${m.away_team}`}
+              className="inline-flex shrink-0 items-center gap-1 rounded-full border border-slate-200 px-2 py-0.5 text-xs hover:bg-slate-50"
             >
-              {score}
-            </span>
-            {ac ? <Flag code={ac.code} title={m.away_team} /> : null}
-          </Link>
-        );
-      })}
+              {hc ? <Flag code={hc.code} title={m.home_team} /> : null}
+              <span
+                className={`font-semibold tabular-nums ${live ? "text-red-600" : ""}`}
+              >
+                {score}
+              </span>
+              {ac ? <Flag code={ac.code} title={m.away_team} /> : null}
+            </Link>
+          );
+        })}
+      </div>
+      {!edges.end && (
+        <button
+          type="button"
+          aria-label="Следующие"
+          onClick={() => scrollByPage(1)}
+          className={`${arrowBtn} right-0`}
+        >
+          ›
+        </button>
+      )}
     </div>
   );
 }
