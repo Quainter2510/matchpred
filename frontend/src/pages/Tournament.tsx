@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api, MatchDay, RoomScoring } from "../api/endpoints";
@@ -96,6 +96,28 @@ export default function Tournament() {
     rawTab === "predictions" || rawTab === "wc" ? rawTab : "table";
   const setTab = (id: typeof tab) =>
     setSearchParams(id === "table" ? {} : { tab: id }, { replace: true });
+
+  // Свайп вкладок влево/вправо на телефоне.
+  const TAB_ORDER = ["table", "predictions", "wc"] as const;
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
+  const onTouchStart = (e: React.TouchEvent) => {
+    const t = e.touches[0];
+    touchStart.current = { x: t.clientX, y: t.clientY };
+  };
+  const onTouchEnd = (e: React.TouchEvent) => {
+    const start = touchStart.current;
+    touchStart.current = null;
+    if (!start) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    // Только явный горизонтальный жест — вертикальный скролл не трогаем.
+    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    const idx = TAB_ORDER.indexOf(tab);
+    const next = dx < 0 ? idx + 1 : idx - 1;
+    if (next >= 0 && next < TAB_ORDER.length) setTab(TAB_ORDER[next]);
+  };
+
   const [showRules, setShowRules] = useState(false);
   const rulesText = room.data?.rules_text || defaultRules(room.data?.scoring);
 
@@ -179,6 +201,7 @@ export default function Tournament() {
         ))}
       </div>
 
+      <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} className="space-y-6">
       {tab === "table" && (
         <section className="card">
           {lb.isLoading ? (
@@ -268,6 +291,7 @@ export default function Tournament() {
           </section>
         </div>
       )}
+      </div>
     </div>
   );
 }

@@ -106,15 +106,8 @@ export default function Sidebar() {
             {i.label}
           </Link>
         ))}
-        {user ? (
-          <button
-            onClick={handleLogout}
-            className="flex flex-col items-center text-xs text-slate-500"
-          >
-            <span className="text-lg">🚪</span>
-            Выход
-          </button>
-        ) : (
+        {/* Выход на телефоне — только в профиле (не в нижней панели). */}
+        {!user && (
           <Link
             to="/login"
             className="flex flex-col items-center text-xs text-brand"

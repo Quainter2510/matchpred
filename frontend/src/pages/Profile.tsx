@@ -1,9 +1,16 @@
 import { useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api } from "../api/endpoints";
 import { useAuth } from "../store/auth";
 
 export default function Profile() {
-  const { user, setUser } = useAuth();
+  const { user, setUser, logout } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    await logout();
+    navigate("/login");
+  };
   const [nickname, setNickname] = useState(user?.nickname || "");
   const [saved, setSaved] = useState(false);
   const [err, setErr] = useState("");
@@ -187,6 +194,17 @@ export default function Profile() {
             )}
           </>
         )}
+      </div>
+
+      <div className="card">
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="flex items-center gap-2 text-red-600 hover:underline"
+        >
+          <span>🚪</span>
+          Выйти из аккаунта
+        </button>
       </div>
     </div>
   );
