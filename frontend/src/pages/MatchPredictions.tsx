@@ -5,6 +5,8 @@ import Avatar from "../components/Avatar";
 import { LiveBadge } from "../components/MatchCard";
 import MultiplierBadge from "../components/MultiplierBadge";
 import TeamName from "../components/TeamName";
+import Flag from "../components/Flag";
+import { findCountry } from "../utils/countries";
 import { classifyPrediction, HIT_BG } from "../utils/scoring";
 
 // Очки начислены → сортируем по убыванию; сделавшие прогноз выше тех, кто
@@ -45,10 +47,27 @@ function DistributionBar({
     else draw++;
   }
   const pct = (n: number) => `${Math.round((n / total) * 100)}%`;
+  const homeC = findCountry(match.home_team);
+  const awayC = findCountry(match.away_team);
   const segs = [
-    { n: home, color: "bg-sky-500", label: match.home_team },
-    { n: draw, color: "bg-slate-400", label: "Ничья" },
-    { n: away, color: "bg-indigo-500", label: match.away_team },
+    {
+      n: home,
+      color: "bg-sky-500",
+      label: match.home_team,
+      icon: homeC ? <Flag code={homeC.code} title={match.home_team} /> : null,
+    },
+    {
+      n: draw,
+      color: "bg-slate-400",
+      label: "Ничья",
+      icon: <span className="leading-none">✕</span>,
+    },
+    {
+      n: away,
+      color: "bg-indigo-500",
+      label: match.away_team,
+      icon: awayC ? <Flag code={awayC.code} title={match.away_team} /> : null,
+    },
   ];
 
   return (
@@ -57,10 +76,11 @@ function DistributionBar({
         s.n > 0 ? (
           <div
             key={i}
-            className={`flex items-center justify-center ${s.color}`}
+            className={`flex items-center justify-center gap-1 ${s.color}`}
             style={{ width: pct(s.n) }}
             title={`${s.label}: ${s.n} (${pct(s.n)})`}
           >
+            {s.icon}
             {s.n}
           </div>
         ) : null
