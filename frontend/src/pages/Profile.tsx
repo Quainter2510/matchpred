@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/endpoints";
+import Avatar from "../components/Avatar";
 import { useAuth } from "../store/auth";
 
 export default function Profile() {
@@ -80,13 +81,12 @@ export default function Profile() {
             title="Сменить аватар"
             className="group relative h-20 w-20 shrink-0 overflow-hidden rounded-full"
           >
-            {user?.avatar_url ? (
-              <img src={user.avatar_url} className="h-20 w-20 rounded-full object-cover" />
-            ) : (
-              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-slate-300 text-3xl">
-                {user?.nickname?.[0]?.toUpperCase()}
-              </div>
-            )}
+            <Avatar
+              url={user?.avatar_url}
+              nick={user?.nickname ?? ""}
+              className="h-20 w-20"
+              textClassName="text-3xl"
+            />
             <span className="absolute inset-0 flex items-center justify-center bg-black/40 text-xs text-white opacity-0 transition group-hover:opacity-100">
               {avatarBusy ? "…" : "Сменить"}
             </span>

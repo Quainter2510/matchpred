@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../store/auth";
+import Avatar from "./Avatar";
 
 // «Соревнования» ведёт на "/" — корневой redirect открывает последнее
 // посещённое соревнование (или хаб, если выбора нет).
@@ -62,13 +63,7 @@ export default function Sidebar() {
             onClick={() => setMenu((m) => !m)}
             className="flex w-full items-center gap-2 rounded-lg p-2 hover:bg-slate-100"
           >
-            {user?.avatar_url ? (
-              <img src={user.avatar_url} className="h-8 w-8 rounded-full" />
-            ) : (
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-300">
-                {user?.nickname?.[0]?.toUpperCase()}
-              </div>
-            )}
+            <Avatar url={user?.avatar_url} nick={user?.nickname ?? ""} className="h-8 w-8" />
             <span className="truncate">{user?.nickname}</span>
           </button>
           {menu && (

@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, Match, PlayerPrediction } from "../api/endpoints";
+import Avatar from "../components/Avatar";
 import { LiveBadge } from "../components/MatchCard";
 import MultiplierBadge from "../components/MultiplierBadge";
 import TeamName from "../components/TeamName";
@@ -170,13 +171,7 @@ export default function MatchPredictions() {
               {[...(preds.data || [])].sort(byPoints).map((p) => (
                 <tr key={p.user_id} className={`border-b ${rowTint(p, match.data)}`}>
                   <td className="flex items-center gap-2 py-2">
-                    {p.avatar_url ? (
-                      <img src={p.avatar_url} className="h-6 w-6 rounded-full" />
-                    ) : (
-                      <div className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-300 text-xs">
-                        {p.nickname[0]?.toUpperCase()}
-                      </div>
-                    )}
+                    <Avatar url={p.avatar_url} nick={p.nickname} className="h-6 w-6" textClassName="text-xs" />
                     <Link
                       to={`/room/${roomId}/player/${p.user_id}`}
                       className="hover:text-brand hover:underline"

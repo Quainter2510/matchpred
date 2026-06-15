@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { LeaderboardEntry } from "../api/endpoints";
 import { useAuth } from "../store/auth";
 import { findCountry } from "../utils/countries";
+import Avatar from "./Avatar";
 import Flag from "./Flag";
 
 function StatusMark({ set, correct }: { set: boolean; correct: boolean }) {
@@ -98,13 +99,7 @@ export default function LeaderboardTable({
           >
             <td className="py-2">{e.place}</td>
             <td className="flex items-center gap-2 py-2">
-              {e.avatar_url ? (
-                <img src={e.avatar_url} className="h-6 w-6 rounded-full object-cover" />
-              ) : (
-                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-300 text-xs">
-                  {e.nickname[0]?.toUpperCase()}
-                </div>
-              )}
+              <Avatar url={e.avatar_url} nick={e.nickname} className="h-6 w-6" textClassName="text-xs" />
               <Link
                 to={`/room/${roomId}/player/${e.user_id}`}
                 className="hover:text-brand hover:underline"

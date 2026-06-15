@@ -2,6 +2,7 @@ import { Fragment, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api, TourPlayerMatch } from "../api/endpoints";
+import Avatar from "../components/Avatar";
 import MatchCard from "../components/MatchCard";
 import TeamName from "../components/TeamName";
 import { useAuth } from "../store/auth";
@@ -186,16 +187,7 @@ export default function Tour() {
                   >
                     <td className="py-2">{i + 1}</td>
                     <td className="flex items-center gap-2 py-2">
-                      {p.avatar_url ? (
-                        <img
-                          src={p.avatar_url}
-                          className="h-6 w-6 rounded-full object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-300 text-xs">
-                          {p.nickname[0]?.toUpperCase()}
-                        </div>
-                      )}
+                      <Avatar url={p.avatar_url} nick={p.nickname} className="h-6 w-6" textClassName="text-xs" />
                       <Link
                         to={`/room/${roomId}/player/${p.user_id}`}
                         className="hover:text-brand hover:underline"

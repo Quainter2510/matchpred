@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, PlayerProfileMatch } from "../api/endpoints";
+import Avatar from "../components/Avatar";
 import TeamName from "../components/TeamName";
 import { formatDate, formatTime } from "../utils/dates";
 import { formatStage } from "../utils/stage";
@@ -11,16 +12,6 @@ import {
   HIT_CARD,
   HitKind,
 } from "../utils/scoring";
-
-function Avatar({ url, nick, size }: { url: string | null; nick: string; size: string }) {
-  return url ? (
-    <img src={url} className={`${size} rounded-full object-cover`} />
-  ) : (
-    <div className={`${size} flex items-center justify-center rounded-full bg-slate-300 font-semibold text-slate-600`}>
-      {nick[0]?.toUpperCase()}
-    </div>
-  );
-}
 
 // Цвет строки матча — единая схема по категории попадания (см. utils/scoring):
 // сравниваем счета напрямую, поэтому коэффициенты и правила комнаты не ломают
@@ -112,7 +103,7 @@ export default function PlayerProfile() {
             <div className="shrink-0 px-1 text-center text-3xl font-extrabold leading-none tabular-nums text-slate-700">
               {placeStr}
             </div>
-            <Avatar url={data.avatar_url} nick={data.nickname} size="h-9 w-9" />
+            <Avatar url={data.avatar_url} nick={data.nickname} className="h-9 w-9" />
             <div className="min-w-0 flex-1 truncate font-semibold">{data.nickname}</div>
             <div className="shrink-0 text-right leading-none">
               <div className="text-2xl font-extrabold">{data.total_points}</div>
@@ -122,7 +113,7 @@ export default function PlayerProfile() {
         ) : (
           <div className="space-y-3 pb-4 pt-2">
             <div className="flex items-center gap-4">
-              <Avatar url={data.avatar_url} nick={data.nickname} size="h-20 w-20" />
+              <Avatar url={data.avatar_url} nick={data.nickname} className="h-20 w-20" textClassName="text-3xl" />
               <div className="min-w-0">
                 <div className="truncate text-2xl font-bold">{data.nickname}</div>
                 <div className="mt-2 flex items-end gap-6">
@@ -241,10 +232,10 @@ export default function PlayerProfile() {
                   <TeamName team={m.away_team} className="justify-start text-left font-medium" />
                 </div>
                 {m.started && (
-                  <div className="mt-1 text-right">
+                  <div className="mt-2 text-right">
                     <Link
                       to={`/room/${roomId}/match/${m.match_id}/predictions`}
-                      className="text-xs text-brand hover:underline"
+                      className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-600 hover:border-brand hover:text-brand"
                     >
                       Прогнозы участников →
                     </Link>
@@ -257,16 +248,27 @@ export default function PlayerProfile() {
         })()}
       </div>
 
-      {/* Jump to the first upcoming match */}
-      {firstUpcoming && (
+      {/* Плавающие кнопки навигации: вверх страницы и к ближайшему матчу. */}
+      <div className="fixed bottom-24 right-4 z-30 flex flex-col gap-2 md:bottom-6">
         <button
-          onClick={jumpToUpcoming}
-          title="К ближайшему матчу"
-          className="fixed bottom-24 right-4 z-30 flex h-11 w-11 items-center justify-center rounded-full bg-brand text-white shadow-lg hover:bg-brand-dark md:bottom-6"
+          onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+          title="Наверх"
+          aria-label="Наверх"
+          className="flex h-11 w-11 items-center justify-center rounded-full bg-brand text-white shadow-lg hover:bg-brand-dark"
         >
-          ↓
+          ↑
         </button>
-      )}
+        {firstUpcoming && (
+          <button
+            onClick={jumpToUpcoming}
+            title="К ближайшему матчу"
+            aria-label="К ближайшему матчу"
+            className="flex h-11 w-11 items-center justify-center rounded-full bg-brand text-white shadow-lg hover:bg-brand-dark"
+          >
+            ↓
+          </button>
+        )}
+      </div>
     </div>
   );
 }
