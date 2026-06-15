@@ -40,10 +40,10 @@ function GroupTable({ group }: { group: GroupStanding }) {
       {/* min-w: на телефоне колонка с названием сжималась до нуля — теперь
           вместо этого таблица прокручивается горизонтально (overflow-x-auto
           на карточке). */}
-      <table className="w-full min-w-[26rem] text-xs sm:text-sm">
+      <table className="w-full min-w-[22rem] text-xs sm:text-sm">
         <thead>
           <tr className="border-b text-slate-500">
-            <th className="py-1 pr-1 text-left">Команда</th>
+            <th className="w-24 py-1 pr-1 text-left sm:w-28">Команда</th>
             {order.map((_, i) => (
               <th key={i} className="w-10 text-center">
                 {i + 1}
@@ -62,7 +62,7 @@ function GroupTable({ group }: { group: GroupStanding }) {
             <tr key={t.team} className="border-b last:border-b-0">
               <td className="max-w-0 truncate py-1.5 pr-1">
                 <span className="mr-1 text-slate-400">{row + 1}.</span>
-                <TeamName team={t.team} />
+                <TeamName team={t.team} short />
               </td>
               {order.map((opp, col) =>
                 col === row ? (
