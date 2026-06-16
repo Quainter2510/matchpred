@@ -3,11 +3,24 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api, TourPlayerMatch } from "../api/endpoints";
 import Avatar from "../components/Avatar";
+import Flag from "../components/Flag";
 import MatchCard from "../components/MatchCard";
-import TeamName from "../components/TeamName";
 import { useAuth } from "../store/auth";
+import { findCountry } from "../utils/countries";
 import { formatDate, isPast } from "../utils/dates";
 import { classifyPrediction, HIT_BADGE, HIT_BG } from "../utils/scoring";
+
+// Команда флагом (с буквенным фолбэком), чтобы плотный список влезал на телефон.
+function TeamFlag({ team }: { team: string }) {
+  const c = findCountry(team);
+  return c ? (
+    <Flag code={c.code} title={team} />
+  ) : (
+    <span className="text-[10px] uppercase text-slate-500" title={team}>
+      {team.slice(0, 3)}
+    </span>
+  );
+}
 
 function isFinished(m: TourPlayerMatch): boolean {
   return m.status === "finished" && m.home_score != null && m.away_score != null;
@@ -22,7 +35,8 @@ function itemTint(m: TourPlayerMatch): string {
   ];
 }
 
-// Раскрытый список матчей игрока: матч, счёт, прогноз, очки.
+// Раскрытый список матчей игрока: флаги команд, счёт, прогноз, очки.
+// Команды показываем флагами — плотно и гарантированно влезает на телефон.
 function PlayerMatches({ matches }: { matches: TourPlayerMatch[] }) {
   return (
     <div className="space-y-1 py-2">
@@ -33,35 +47,37 @@ function PlayerMatches({ matches }: { matches: TourPlayerMatch[] }) {
         return (
           <div
             key={m.match_id}
-            className={`flex items-center gap-2 rounded px-2 py-1 text-xs sm:text-sm ${itemTint(m)}`}
+            className={`flex items-center gap-2 rounded px-2 py-1 text-xs ${itemTint(m)}`}
           >
-            <span className="flex min-w-0 flex-1 justify-end">
-              <TeamName team={m.home_team} flagSide="right" className="truncate text-right" />
+            {/* Матч: флаг — счёт — флаг */}
+            <span className="flex shrink-0 items-center gap-1">
+              <TeamFlag team={m.home_team} />
+              <span
+                className={`w-9 text-center font-bold tabular-nums ${
+                  live ? "text-red-600" : ""
+                }`}
+              >
+                {m.home_score != null && m.away_score != null
+                  ? `${m.home_score}:${m.away_score}`
+                  : "—:—"}
+              </span>
+              <TeamFlag team={m.away_team} />
             </span>
-            <span
-              className={`w-12 shrink-0 text-center font-bold tabular-nums ${
-                live ? "text-red-600" : ""
-              }`}
-            >
-              {m.home_score != null && m.away_score != null
-                ? `${m.home_score}:${m.away_score}`
-                : "—:—"}
+
+            <span className="flex-1" />
+
+            {/* Прогноз игрока */}
+            <span className="shrink-0 whitespace-nowrap text-slate-500">
+              <span className="text-[10px] uppercase text-slate-400">пр.</span>{" "}
+              <b className="tabular-nums text-slate-600">
+                {hasPred ? `${m.predicted_home}:${m.predicted_away}` : "—"}
+              </b>
             </span>
-            <span className="flex min-w-0 flex-1">
-              <TeamName team={m.away_team} className="truncate" />
-            </span>
-            <span className="w-16 shrink-0 text-center text-slate-600">
-              {hasPred ? (
-                <>
-                  прогноз <b className="tabular-nums">{m.predicted_home}:{m.predicted_away}</b>
-                </>
-              ) : (
-                "—"
-              )}
-            </span>
-            <span className="w-16 shrink-0 text-right">
+
+            {/* Очки / статус */}
+            <span className="w-12 shrink-0 text-right">
               {!m.started ? (
-                <span className="text-[10px] uppercase text-slate-400">не начался</span>
+                <span className="text-[10px] uppercase text-slate-400">не нач.</span>
               ) : live ? (
                 <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase text-red-600">
                   <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-red-600" />
