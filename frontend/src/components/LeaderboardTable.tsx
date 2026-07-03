@@ -92,10 +92,27 @@ export default function LeaderboardTable({
         </tr>
       </thead>
       <tbody>
-        {entries.map((e) => (
+        {entries.map((e, i) => {
+          const isMe = e.user_id === me?.id;
+          // Призовая зона (топ-3) — зеленоватая, зона вылета (последние 3) —
+          // красноватая; своя строка внутри зоны — чуть насыщеннее.
+          const n = entries.length;
+          const zone =
+            i < 3
+              ? isMe
+                ? "bg-emerald-100"
+                : "bg-emerald-50"
+              : n > 3 && i >= n - 3
+                ? isMe
+                  ? "bg-red-100"
+                  : "bg-red-50"
+                : isMe
+                  ? "bg-blue-50"
+                  : "";
+          return (
           <tr
             key={e.user_id}
-            className={`border-b ${e.user_id === me?.id ? "bg-blue-50 font-semibold" : ""}`}
+            className={`border-b ${zone} ${isMe ? "font-semibold" : ""}`}
           >
             <td className="py-2">{e.place}</td>
             <td className="flex items-center gap-2 py-2">
@@ -125,7 +142,8 @@ export default function LeaderboardTable({
             <td className="text-center">{e.total_points}</td>
             <td className="text-center">{e.exact_scores_count}</td>
           </tr>
-        ))}
+          );
+        })}
       </tbody>
     </table>
   );

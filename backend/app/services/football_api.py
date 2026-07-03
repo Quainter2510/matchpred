@@ -59,8 +59,18 @@ async def _get(path: str, params: dict) -> dict:
 def _normalize_fixture(fx: dict, groups: dict[str, str] | None = None) -> dict:
     fixture = fx["fixture"]
     teams = fx["teams"]
-    goals = fx["goals"]
     league = fx.get("league", {})
+
+    # `goals` у API-Football включает дополнительное время (AET/PEN) — нам нужен
+    # счёт только основного времени (90 мин), он лежит в score.fulltime.
+    # Fallback на goals: до конца матча (1H/2H) и для технических результатов
+    # (AWD/WO) fulltime может быть пустым.
+    goals = fx.get("goals") or {}
+    fulltime = (fx.get("score") or {}).get("fulltime") or {}
+    if fulltime.get("home") is not None and fulltime.get("away") is not None:
+        home_score, away_score = fulltime["home"], fulltime["away"]
+    else:
+        home_score, away_score = goals.get("home"), goals.get("away")
     kickoff = datetime.fromisoformat(fixture["date"]).astimezone(timezone.utc)
     raw_status = fixture.get("status", {}).get("short", "NS")
     stage = (league.get("round") or "group").lower().replace(" ", "_")[:40]
@@ -88,8 +98,8 @@ def _normalize_fixture(fx: dict, groups: dict[str, str] | None = None) -> dict:
         "group_name": group_name,
         "home_team": home,
         "away_team": away,
-        "home_score_ft": goals.get("home"),
-        "away_score_ft": goals.get("away"),
+        "home_score_ft": home_score,
+        "away_score_ft": away_score,
         "winner_team": winner_team,
         "status": _STATUS_MAP.get(raw_status, "scheduled"),
     }
