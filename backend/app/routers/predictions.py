@@ -1,3 +1,4 @@
+import uuid
 from datetime import date as date_type
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -8,6 +9,7 @@ from app.database import get_db
 from app.dependencies import RoomContext, require_room_member
 from app.models import Match, Prediction, RoomMember, User
 from app.schemas.prediction import (
+    AdminPredictionSet,
     MyPredictionOut,
     PredictionBatchRequest,
     PredictionBatchResponse,
@@ -16,8 +18,8 @@ from app.schemas.prediction import (
     TourPlayerOut,
     TourPointsOut,
 )
-from app.services.predictions import set_prediction
-from app.services.recalc import room_multipliers_map
+from app.services.predictions import admin_set_prediction, set_prediction
+from app.services.recalc import room_multipliers_map, score_match
 from app.services.simulation import SimContext, effective_result, get_sim, points_for
 
 router = APIRouter(prefix="/rooms/{room_id}/predictions", tags=["predictions"])
@@ -52,6 +54,49 @@ async def batch(
 
     await db.commit()
     return PredictionBatchResponse(results=results)
+
+
+@router.put("/{match_id}/users/{user_id}")
+async def admin_set_user_prediction(
+    match_id: uuid.UUID,
+    user_id: uuid.UUID,
+    payload: AdminPredictionSet,
+    ctx: RoomContext = Depends(require_room_member),
+    db: AsyncSession = Depends(get_db),
+):
+    """Суперадмин задаёт/правит прогноз участника даже после дедлайна —
+    если участник не успел проставить счёт вовремя. Работает и после
+    завершения матча: очки снимаются и начисляются заново по новому прогнозу."""
+    if not ctx.is_superadmin:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Superadmin access required")
+
+    match = await db.get(Match, match_id)
+    if not match:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Match not found")
+    member = await db.get(RoomMember, (ctx.room.id, user_id))
+    if not member:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User is not a room member")
+    target = await db.get(User, user_id)
+    if not target:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+
+    accepted, reason = await admin_set_prediction(
+        db,
+        room=ctx.room,
+        actor=ctx.user,
+        target=target,
+        match=match,
+        home=payload.home,
+        away=payload.away,
+    )
+    if not accepted:
+        raise HTTPException(status.HTTP_409_CONFLICT, reason)
+    # Матч уже завершён — сразу начисляем очки по новому прогнозу (старые
+    # сняты внутри admin_set_prediction).
+    if match.status == "finished":
+        await score_match(db, match)
+    await db.commit()
+    return {"ok": True}
 
 
 @router.get("/my", response_model=list[MyPredictionOut])

@@ -409,6 +409,7 @@ frontend/
 | Метод | Путь | Доступ | Описание |
 |-------|------|--------|---------|
 | POST | `/rooms/{id}/predictions/batch` | Member | `{predictions:[{match_id, home, away}]}` → по каждому `{accepted, reason}` (`room_archived│deadline_passed│invalid_score│match_not_found`) |
+| PUT | `/rooms/{id}/predictions/{match_id}/users/{uid}` | Superadmin (режим SA) | Прогноз за участника **без проверки дедлайна**. Работает и на завершённом матче: старые очки снимаются, начисляются заново по новому прогнозу. 409 `room_archived│invalid_score` |
 | GET | `/rooms/{id}/predictions/my` | Member | Все мои прогнозы в комнате с очками |
 | GET | `/rooms/{id}/predictions/tour/{date}` | Member | `{date, points, exact_count}` |
 | GET | `/rooms/{id}/predictions/tour/{date}/all` | Member | Итоги тура: все участники с очками за завершённые матчи дня `[{user_id, nickname, avatar_url, points, exact_count, predictions_count, match_count, matches: [{match_id, kickoff_at, home_team, away_team, status, home_score, away_score, started, predicted_*, points_awarded, is_exact}]}]`; пропущенный прогноз = 0; чужие прогнозы на не начавшиеся матчи скрыты (`predicted_* = null`). Сортировка: очки → точные → ник. Учитывает симуляцию |
@@ -500,6 +501,7 @@ read-эндпоинты комнат (`matches`, `predictions`, `special-predict
 
 - Объект: счёт основного времени (90 мин). Доп. время и пенальти **не учитываются**. Матч 1:1 с победой в пенальти → в системе результат 1:1.
 - Дедлайн: строго до `kickoff_at`, проверяется **только на бэкенде** (`services/predictions.py::set_prediction` — общая точка для REST и ботов). До дедлайна менять можно сколько угодно.
+- Исключение: **суперадмин** (в режиме SA) может задать/поправить прогноз участника и после дедлайна (`admin_set_prediction`, кнопка ✎ на странице прогнозов матча) — в том числе на завершённом матче: ранее начисленные очки снимаются с участника и начисляются заново по новому прогнозу (`score_match`). Действие пишется в журнал с `admin_override: true` и прежним счётом.
 - Один прогноз на матч **в каждой комнате** (`UNIQUE(room_id, user_id, match_id)`). Повторная отправка обновляет существующий.
 - Счёт 0–20. В архивной комнате прогнозы не принимаются.
 - Прогнозы других скрыты до `kickoff_at`. Раскрывает только суперадмин (в «Режиме суперадмина»); **админ комнаты их не видит**.

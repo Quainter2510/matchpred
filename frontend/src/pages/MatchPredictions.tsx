@@ -1,6 +1,9 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, Match, PlayerPrediction } from "../api/endpoints";
+import { useAuth } from "../store/auth";
+import { useViewAs } from "../store/viewAs";
 import Avatar from "../components/Avatar";
 import { LiveBadge } from "../components/MatchCard";
 import MultiplierBadge from "../components/MultiplierBadge";
@@ -120,6 +123,28 @@ function rowTint(p: PlayerPrediction, m: Match | undefined): string {
 export default function MatchPredictions() {
   const { roomId, id } = useParams<{ roomId: string; id: string }>();
   const navigate = useNavigate();
+  const qc = useQueryClient();
+  const adminMode = useViewAs((s) => s.adminMode);
+  const isSuper = useAuth((s) => s.isSuperadmin()) && adminMode;
+
+  // Суперадмин может проставить/поправить прогноз участника после дедлайна —
+  // в том числе на завершённом матче (очки снимутся и начислятся заново).
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editH, setEditH] = useState("");
+  const [editA, setEditA] = useState("");
+  const saveEdit = useMutation({
+    mutationFn: (userId: string) =>
+      api.adminSetPrediction(roomId!, id!, userId, Number(editH), Number(editA)),
+    onSuccess: () => {
+      setEditing(null);
+      qc.invalidateQueries({ queryKey: ["match-preds", roomId, id] });
+      // На завершённом матче правка меняет очки — обновляем и таблицу лидеров.
+      qc.invalidateQueries({ queryKey: ["leaderboard"] });
+      qc.invalidateQueries({ queryKey: ["days", roomId] });
+    },
+    onError: (e: any) =>
+      alert(e.response?.data?.detail || "Не удалось сохранить прогноз"),
+  });
   // Раз в минуту подтягиваем live-счёт и очки, начисленные после завершения.
   const match = useQuery({
     queryKey: ["match", roomId, id],
@@ -185,10 +210,56 @@ export default function MatchPredictions() {
                     </Link>
                   </td>
                   <td className="text-center font-medium">
-                    {p.predicted_home != null && p.predicted_away != null ? (
-                      `${p.predicted_home}:${p.predicted_away}`
+                    {editing === p.user_id ? (
+                      <span className="inline-flex items-center gap-1">
+                        <input
+                          className="w-10 rounded border px-1 text-center"
+                          value={editH}
+                          onChange={(e) => setEditH(e.target.value)}
+                        />
+                        :
+                        <input
+                          className="w-10 rounded border px-1 text-center"
+                          value={editA}
+                          onChange={(e) => setEditA(e.target.value)}
+                        />
+                        <button
+                          className="px-1 font-bold text-emerald-600 hover:text-emerald-700"
+                          title="Сохранить"
+                          disabled={editH === "" || editA === "" || saveEdit.isPending}
+                          onClick={() => saveEdit.mutate(p.user_id)}
+                        >
+                          ✓
+                        </button>
+                        <button
+                          className="px-1 text-slate-400 hover:text-slate-600"
+                          title="Отмена"
+                          onClick={() => setEditing(null)}
+                        >
+                          ✕
+                        </button>
+                      </span>
                     ) : (
-                      <span className="text-slate-300">—</span>
+                      <>
+                        {p.predicted_home != null && p.predicted_away != null ? (
+                          `${p.predicted_home}:${p.predicted_away}`
+                        ) : (
+                          <span className="text-slate-300">—</span>
+                        )}
+                        {isSuper && (
+                          <button
+                            className="ml-1.5 text-slate-400 hover:text-brand"
+                            title="Изменить прогноз участника (суперадмин)"
+                            onClick={() => {
+                              setEditing(p.user_id);
+                              setEditH(p.predicted_home?.toString() ?? "");
+                              setEditA(p.predicted_away?.toString() ?? "");
+                            }}
+                          >
+                            ✎
+                          </button>
+                        )}
+                      </>
                     )}
                   </td>
                   <td className="text-right">

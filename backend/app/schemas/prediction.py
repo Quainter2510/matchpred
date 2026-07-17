@@ -14,6 +14,13 @@ class PredictionBatchRequest(BaseModel):
     predictions: list[PredictionItem]
 
 
+class AdminPredictionSet(BaseModel):
+    """Суперадмин задаёт прогноз участнику (после дедлайна, до ввода счёта)."""
+
+    home: int = Field(ge=0, le=20)
+    away: int = Field(ge=0, le=20)
+
+
 class PredictionResult(BaseModel):
     match_id: uuid.UUID
     accepted: bool

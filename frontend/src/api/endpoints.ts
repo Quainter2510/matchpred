@@ -369,6 +369,17 @@ export const api = {
     predictions: { match_id: string; home: number; away: number }[]
   ) =>
     client.post(`${r(roomId)}/predictions/batch`, { predictions }).then((x) => x.data),
+  // Суперадмин: прогноз за участника после дедлайна (пока счёт не введён).
+  adminSetPrediction: (
+    roomId: string,
+    matchId: string,
+    userId: string,
+    home: number,
+    away: number
+  ) =>
+    client
+      .put(`${r(roomId)}/predictions/${matchId}/users/${userId}`, { home, away })
+      .then((x) => x.data),
 
   tourLeaderboard: (roomId: string, date: string) =>
     client
