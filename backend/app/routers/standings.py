@@ -160,6 +160,11 @@ async def top_scorers(
     snap = await get_snapshot()
     scorers = snap.get("scorers", []) if snap else []
     by_id = {s["api_id"]: s for s in scorers}  # ключи — реальные ID из API
+    # Разрешённые при обновлении снимка ID кураторских игроков (real_id
+    # которых в каталоге не заполнен): canonical_id → реальный ID.
+    resolved: dict[int, int] = {
+        int(k): v for k, v in ((snap or {}).get("resolved") or {}).items()
+    }
     # Фолбэк-индекс по фамилии: для игроков каталога без real_id.
     by_surname: dict[str, list[dict]] = {}
     for s in scorers:
@@ -220,7 +225,8 @@ async def top_scorers(
         if rec:
             key = rec["canonical_id"]
             disp_name = rec["name"]
-            real_id = rec["real_id"]
+            # real_id из каталога, иначе — разрешённый при обновлении снимка.
+            real_id = rec["real_id"] or resolved.get(rec["canonical_id"])
             team = rec.get("team")
         else:
             key = api_id if api_id is not None else f"name:{(name or '').lower()}"
