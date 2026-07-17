@@ -98,6 +98,12 @@ def canonical_scorer_id(api_id: int | None) -> int | None:
     return rec["canonical_id"] if rec else api_id
 
 
+def normalize_name(s: str) -> str:
+    """Публичная нормализация имени (нижний регистр, без диакритики) — для
+    сопоставления имён игроков со снимком бомбардиров вне модуля."""
+    return _norm(s)
+
+
 def search_curated(query: str) -> list[dict]:
     """Substring match (accent- and case-insensitive) over latin name, russian
     name and aliases. Returns API-shaped dicts ready to merge with live results."""

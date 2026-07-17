@@ -24,7 +24,7 @@ from app.schemas.standings import (
     TopScorer,
     TopScorersOut,
 )
-from app.services.players_catalog import resolve_player
+from app.services.players_catalog import normalize_name, resolve_player
 from app.services.simulation import SimContext, effective_result, get_sim
 from app.services.top_scorers import get_snapshot
 
@@ -129,6 +129,26 @@ async def standings(
     return StandingsOut(groups=group_out, playoff=playoff_out)
 
 
+# Латинское имя из каталожного формата «Гарри Кейн (Harry Kane)».
+_LATIN_IN_PARENS = re.compile(r"\(([^)]+)\)")
+
+
+def _surname_key(name: str | None) -> str | None:
+    """Фамилия латиницей без диакритики — грубый ключ для сопоставления выбора
+    участника со снимком бомбардиров, когда real_id игрока неизвестен (у части
+    кураторского каталога он не заполнен). У API имена вида "H. Kane" — берём
+    последнее слово длиной >1 (отбрасывая инициалы)."""
+    if not name:
+        return None
+    m = _LATIN_IN_PARENS.search(name)
+    if m:
+        name = m.group(1)
+    parts = [w for w in re.split(r"[\s.\-']+", name.strip()) if len(w) > 1]
+    if not parts:
+        return None
+    return normalize_name(parts[-1])
+
+
 @router.get("/top-scorers", response_model=TopScorersOut)
 async def top_scorers(
     ctx: RoomContext = Depends(require_room_member),
@@ -140,6 +160,30 @@ async def top_scorers(
     snap = await get_snapshot()
     scorers = snap.get("scorers", []) if snap else []
     by_id = {s["api_id"]: s for s in scorers}  # ключи — реальные ID из API
+    # Фолбэк-индекс по фамилии: для игроков каталога без real_id.
+    by_surname: dict[str, list[dict]] = {}
+    for s in scorers:
+        k = _surname_key(s.get("name"))
+        if k:
+            by_surname.setdefault(k, []).append(s)
+
+    def snapshot_entry(real_id, name, team) -> dict | None:
+        """Строка снимка по real_id, иначе по фамилии (+ сборная, если фамилия
+        неоднозначна). None — игрока нет среди бомбардиров (0 голов)."""
+        if real_id is not None and real_id in by_id:
+            return by_id[real_id]
+        k = _surname_key(name)
+        cands = by_surname.get(k, []) if k else []
+        if len(cands) == 1:
+            return cands[0]
+        if team and len(cands) > 1:
+            t = normalize_name(team)
+            same_team = [
+                c for c in cands if normalize_name(c.get("team") or "") == t
+            ]
+            if len(same_team) == 1:
+                return same_team[0]
+        return None
 
     top = [
         TopScorer(
@@ -170,25 +214,29 @@ async def top_scorers(
         )
     ).all()
     # Канонизируем ID: реальный и кураторский (-1 / 278) — это один игрок.
-    agg: dict = {}  # ключ -> {name, real_id, backers}
+    agg: dict = {}  # ключ -> {name, real_id, team, backers}
     for api_id, name in rows:
         rec = resolve_player(api_id)
         if rec:
             key = rec["canonical_id"]
             disp_name = rec["name"]
             real_id = rec["real_id"]
+            team = rec.get("team")
         else:
             key = api_id if api_id is not None else f"name:{(name or '').lower()}"
             disp_name = name
             real_id = api_id
-        e = agg.setdefault(key, {"name": disp_name, "real_id": real_id, "backers": 0})
+            team = None
+        e = agg.setdefault(
+            key, {"name": disp_name, "real_id": real_id, "team": team, "backers": 0}
+        )
         e["backers"] += 1
         if disp_name and not e["name"]:
             e["name"] = disp_name
 
     predicted = []
     for e in agg.values():
-        s = by_id.get(e["real_id"]) if e["real_id"] is not None else None
+        s = snapshot_entry(e["real_id"], e["name"], e.get("team"))
         predicted.append(
             PredictedScorer(
                 name=e["name"] or "—",
