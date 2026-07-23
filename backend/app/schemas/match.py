@@ -16,6 +16,9 @@ class MatchOut(BaseModel):
 
     id: uuid.UUID
     api_football_id: int | None = None
+    league_id: int | None = None
+    season: int | None = None
+    round: str | None = None
     match_date: date
     kickoff_at: datetime
     stage: str
@@ -54,14 +57,19 @@ class MultiplierUpdate(BaseModel):
 
 
 class MatchCreate(BaseModel):
-    # match_date больше не передаётся: тур вычисляется из kickoff_at
-    # (граница 10:00 МСК). Поле оставлено опциональным для совместимости —
-    # значение всё равно пересчитывается на бэкенде.
+    # match_date больше не передаётся: тур вычисляется из kickoff_at по схеме
+    # лиги (суточная для ЧМ, недельная для РПЛ/ЛЧ). Поле оставлено опциональным
+    # для совместимости — значение всё равно пересчитывается на бэкенде.
     match_date: date | None = None
     kickoff_at: datetime
     stage: str = Field(max_length=40)
     home_team: str = Field(max_length=100)
     away_team: str = Field(max_length=100)
+    # Реальная лига+сезон матча (для привязки к турниру). Ручной матч без них
+    # попадёт в суточную группировку и ни в один лиговый турнир.
+    league_id: int | None = None
+    season: int | None = None
+    round: str | None = Field(default=None, max_length=40)
 
 
 class MatchUpdate(BaseModel):
@@ -70,6 +78,9 @@ class MatchUpdate(BaseModel):
     stage: str | None = None
     home_team: str | None = None
     away_team: str | None = None
+    league_id: int | None = None
+    season: int | None = None
+    round: str | None = Field(default=None, max_length=40)
 
 
 class MatchResult(BaseModel):

@@ -214,9 +214,13 @@ def _day_buttons(days, action: str) -> list[list[Button]]:
 
 
 async def _tour_days(db: AsyncSession, provider: str, ext_id: str, user: User) -> Reply:
+    state = await get_state(provider, ext_id)
+    room = await _current_room(db, user, state)
+    if not room:
+        return await _menu(db, provider, ext_id, user)
     today = _today()
     days = await queries.days_with_matches(
-        db, today - timedelta(days=RESULTS_BACK), today + timedelta(days=RESULTS_FWD)
+        db, room, today - timedelta(days=RESULTS_BACK), today + timedelta(days=RESULTS_FWD)
     )
     if not days:
         return Reply("В ближайшие дни нет матчей.", [_btn_menu()])
@@ -234,8 +238,8 @@ async def _tour_results(
     if not day:
         return await _tour_days(db, provider, ext_id, user)
 
-    players = await queries.tour_player_points(db, room.id, day)
-    matches = await queries.tour_matches_for_user(db, room.id, user.id, day)
+    players = await queries.tour_player_points(db, room, day)
+    matches = await queries.tour_matches_for_user(db, room, user.id, day)
 
     lines = [f"📅 {_fmt_day(day)} — итоги ({room.name})", ""]
     if players:
@@ -261,9 +265,13 @@ async def _tour_results(
 
 # ---------------- predictions ----------------
 async def _predict_days(db: AsyncSession, provider: str, ext_id: str, user: User) -> Reply:
+    state = await get_state(provider, ext_id)
+    room = await _current_room(db, user, state)
+    if not room:
+        return await _menu(db, provider, ext_id, user)
     today = _today()
     days = await queries.days_with_matches(
-        db, today - timedelta(days=PREDICT_BACK), today + timedelta(days=PREDICT_FWD)
+        db, room, today - timedelta(days=PREDICT_BACK), today + timedelta(days=PREDICT_FWD)
     )
     if not days:
         return Reply("Нет матчей для прогноза в ближайшие дни.", [_btn_menu()])
@@ -284,7 +292,7 @@ async def _predict_start(
         return await _predict_days(db, provider, ext_id, user)
 
     now = datetime.now(timezone.utc)
-    matches = [m for m in await queries.matches_of_day(db, day) if m.kickoff_at > now]
+    matches = [m for m in await queries.matches_of_day(db, room, day) if m.kickoff_at > now]
     if not matches:
         return Reply("Все матчи этого дня уже начались — приём закрыт.", [_btn_menu()])
 

@@ -6,8 +6,9 @@ import AdminMatches from "./AdminMatches";
 import AdminSettings from "./AdminSettings";
 import AdminAuditLog from "./AdminAuditLog";
 import AdminSimulation from "./AdminSimulation";
+import AdminTournaments from "./AdminTournaments";
 
-type Tab = "matches" | "recalc" | "audit" | "sim";
+type Tab = "tournaments" | "matches" | "recalc" | "audit" | "sim";
 
 // Global admin panel (superadmin only): matches/results, recalculation, audit
 // log and simulation are shared across all rooms. Per-room settings —
@@ -24,6 +25,7 @@ export default function Admin() {
   };
 
   const tabs: { id: Tab; label: string; super?: boolean }[] = [
+    { id: "tournaments", label: "Турниры", super: true },
     { id: "matches", label: "Матчи и результаты" },
     { id: "recalc", label: "Пересчёт" },
     { id: "audit", label: "Журнал", super: true },
@@ -77,6 +79,7 @@ export default function Admin() {
           ))}
       </div>
 
+      {tab === "tournaments" && isSuper && <AdminTournaments />}
       {tab === "matches" && <AdminMatches />}
       {tab === "recalc" && <AdminSettings />}
       {tab === "audit" && isSuper && <AdminAuditLog />}

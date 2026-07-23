@@ -13,6 +13,7 @@ from app.dependencies import (
 )
 from app.models import SpecialPrediction, User
 from app.schemas.special import (
+    LeaderResultRequest,
     PlayerSearchItem,
     ScorerResultRequest,
     SpecialPredictionOut,
@@ -20,7 +21,7 @@ from app.schemas.special import (
     SpecialPredictionUpdate,
 )
 from app.services import audit, football_api
-from app.services.recalc import score_top_scorer
+from app.services.recalc import score_leader, score_top_scorer
 from app.services.simulation import SimContext, get_sim
 
 router = APIRouter(prefix="/rooms/{room_id}/special-prediction", tags=["special"])
@@ -173,6 +174,31 @@ async def scorer_result(
             "player_name": payload.player_name,
             "awarded": awarded,
         },
+    )
+    await db.commit()
+    return {"awarded": awarded}
+
+
+@router.post("/leader-result")
+async def leader_result(
+    payload: LeaderResultRequest,
+    ctx: RoomContext = Depends(require_room_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Итоговый лидер лиги (спецпрогноз типа `leader`, напр. РПЛ): начислить
+    очки тем, кто угадал команду, **только в этой комнате**. Указывает админ
+    комнаты вручную."""
+    team = payload.team.strip()
+    if not team:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Не указана команда")
+    awarded = await score_leader(db, ctx.room.id, team)
+    await audit.log_event(
+        db,
+        "leader_result_set",
+        actor_id=ctx.user.id,
+        actor_nickname=ctx.user.nickname,
+        target_id=ctx.room.id,
+        details={"room_id": str(ctx.room.id), "team": team, "awarded": awarded},
     )
     await db.commit()
     return {"awarded": awarded}

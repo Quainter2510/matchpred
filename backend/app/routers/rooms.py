@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_db
 from app.dependencies import (
     RoomContext,
@@ -34,11 +35,27 @@ from app.schemas.room import (
     RoomRulesTextUpdate,
     RoomScoring,
     RoomSummary,
+    RoundOut,
+    TournamentTypeOut,
 )
 from app.security import hash_password, verify_password
-from app.services import audit
+from app.services import audit, football_api
+from app.services.tournament import TYPE_CONFIG
 
 router = APIRouter(prefix="/rooms", tags=["rooms"])
+
+
+def _summary(room: Room, *, member_count: int, is_member: bool, my_role: str | None) -> RoomSummary:
+    return RoomSummary(
+        id=room.id,
+        name=room.name,
+        member_count=member_count,
+        is_member=is_member,
+        is_active=room.is_active,
+        my_role=my_role,
+        tournament_type=room.tournament_type,
+        special_kind=room.special_kind,
+    )
 
 
 async def _member_count(db: AsyncSession, room_id: uuid.UUID) -> int:
@@ -62,6 +79,66 @@ def _scoring(room: Room) -> RoomScoring:
     )
 
 
+def _detail(room: Room, *, member_count: int, is_member: bool, my_role: str | None,
+            total_points: int | None = None) -> RoomDetail:
+    return RoomDetail(
+        id=room.id,
+        name=room.name,
+        member_count=member_count,
+        is_member=is_member,
+        is_active=room.is_active,
+        my_role=my_role,
+        tournament_type=room.tournament_type,
+        special_kind=room.special_kind,
+        first_match_at=room.first_match_at,
+        total_points=total_points,
+        scoring=_scoring(room),
+        rules_text=room.rules_text,
+        league_id=room.league_id,
+        season=room.season,
+        starts_on=room.starts_on,
+        ends_on=room.ends_on,
+        special_result_team=room.special_result_team,
+    )
+
+
+# ---------------- Tournament types & rounds (superadmin, для панели создания) ----------------
+# Объявлены ДО GET /{room_id}, иначе статический путь перехватит {room_id}.
+@router.get("/tournament-types", response_model=list[TournamentTypeOut])
+async def tournament_types(user: User = Depends(require_superadmin)):
+    return [
+        TournamentTypeOut(
+            id=key,
+            label=cfg["label"],
+            special_kind=cfg["special_kind"],
+            has_league=cfg["league_id"] is not None,
+            # Сезон выбирает админ у лиговых типов, кроме ЧМ (там сезон один).
+            needs_season=cfg["league_id"] is not None and key != "world_cup",
+        )
+        for key, cfg in TYPE_CONFIG.items()
+    ]
+
+
+@router.get("/available-rounds", response_model=list[RoundOut])
+async def available_rounds(
+    type: str,
+    season: int,
+    user: User = Depends(require_superadmin),
+):
+    """Туры реальной лиги с датами — для выбора длительности «с тура по тур».
+    Данные берутся напрямую из API-Football (не из БД)."""
+    cfg = TYPE_CONFIG.get(type)
+    if not cfg or cfg["league_id"] is None:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "Тип турнира не привязан к одной лиге"
+        )
+    try:
+        rounds = await football_api.fetch_rounds(cfg["league_id"], season)
+    except Exception as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"API-Football error: {exc}")
+    return [RoundOut(**r) for r in rounds]
+
+
 # ---------------- Create / delete (superadmin) ----------------
 @router.post("", response_model=RoomDetail, status_code=201)
 async def create_room(
@@ -69,13 +146,36 @@ async def create_room(
     user: User = Depends(require_superadmin),
     db: AsyncSession = Depends(get_db),
 ):
+    cfg = TYPE_CONFIG.get(payload.tournament_type)
+    if not cfg:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Неизвестный тип турнира")
+    league_id = cfg["league_id"]
+
+    season = payload.season
+    if payload.tournament_type == "world_cup" and season is None:
+        season = settings.API_FOOTBALL_SEASON
+    if league_id is not None and season is None:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "Для этого типа турнира требуется сезон"
+        )
+
+    # Дедлайн спецпрогноза = первый матч окна турнира. Если фронт не передал —
+    # берём минимальный kickoff среди уже загруженных матчей этого турнира.
     first_match_at = payload.first_match_at
-    if first_match_at is None:
-        first_match_at = await db.scalar(select(func.min(Match.kickoff_at)))
+    if first_match_at is None and league_id is not None:
+        stmt = select(func.min(Match.kickoff_at)).where(Match.league_id == league_id)
+        if season is not None:
+            stmt = stmt.where(Match.season == season)
+        if payload.starts_on is not None:
+            stmt = stmt.where(Match.match_date >= payload.starts_on)
+        if payload.ends_on is not None:
+            stmt = stmt.where(Match.match_date <= payload.ends_on)
+        first_match_at = await db.scalar(stmt)
     if first_match_at is None:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
-            "No matches loaded yet — pass first_match_at explicitly.",
+            "Матчи турнира ещё не загружены — синхронизируйте лигу или передайте "
+            "first_match_at явно.",
         )
 
     room = Room(
@@ -83,7 +183,20 @@ async def create_room(
         password_hash=hash_password(payload.password),
         first_match_at=first_match_at,
         created_by=user.id,
+        tournament_type=payload.tournament_type,
+        league_id=league_id,
+        season=season,
+        tour_anchor=cfg["tour_anchor"],
+        special_kind=cfg["special_kind"],
+        starts_on=payload.starts_on,
+        ends_on=payload.ends_on,
     )
+    if payload.scoring:
+        room.points_exact = payload.scoring.points_exact
+        room.points_diff = payload.scoring.points_diff
+        room.points_outcome = payload.scoring.points_outcome
+        room.points_champion = payload.scoring.points_champion
+        room.points_scorer = payload.scoring.points_scorer
     db.add(room)
     await db.flush()
     # The creator is the room's first admin.
@@ -94,21 +207,11 @@ async def create_room(
         actor_id=user.id,
         actor_nickname=user.nickname,
         target_id=room.id,
-        details={"name": room.name},
+        details={"name": room.name, "type": room.tournament_type, "season": season},
     )
     await db.commit()
     await db.refresh(room)
-    return RoomDetail(
-        id=room.id,
-        name=room.name,
-        member_count=1,
-        is_member=True,
-        is_active=room.is_active,
-        my_role="admin",
-        first_match_at=room.first_match_at,
-        scoring=_scoring(room),
-        rules_text=room.rules_text,
-    )
+    return _detail(room, member_count=1, is_member=True, my_role="admin")
 
 
 @router.delete("/{room_id}")
@@ -158,12 +261,10 @@ async def list_rooms(
     out = []
     for r in rooms:
         out.append(
-            RoomSummary(
-                id=r.id,
-                name=r.name,
+            _summary(
+                r,
                 member_count=await _member_count(db, r.id),
                 is_member=r.id in my,
-                is_active=r.is_active,
                 my_role=my.get(r.id),
             )
         )
@@ -186,12 +287,10 @@ async def my_rooms(
     out = []
     for room, member in rows:
         out.append(
-            RoomSummary(
-                id=room.id,
-                name=room.name,
+            _summary(
+                room,
                 member_count=await _member_count(db, room.id),
                 is_member=True,
-                is_active=room.is_active,
                 my_role=member.room_role,
             )
         )
@@ -211,12 +310,10 @@ async def join_room(
 
     existing = await db.get(RoomMember, (room_id, user.id))
     if existing:
-        return RoomSummary(
-            id=room.id,
-            name=room.name,
+        return _summary(
+            room,
             member_count=await _member_count(db, room.id),
             is_member=True,
-            is_active=room.is_active,
             my_role=existing.room_role,
         )
 
@@ -239,12 +336,10 @@ async def join_room(
     )
     await db.commit()
     await invalidate_leaderboard_cache(room_id)
-    return RoomSummary(
-        id=room.id,
-        name=room.name,
+    return _summary(
+        room,
         member_count=await _member_count(db, room.id),
         is_member=True,
-        is_active=room.is_active,
         my_role=role,
     )
 
@@ -255,17 +350,12 @@ async def room_detail(
     db: AsyncSession = Depends(get_db),
 ):
     room = ctx.room
-    return RoomDetail(
-        id=room.id,
-        name=room.name,
+    return _detail(
+        room,
         member_count=await _member_count(db, room.id),
         is_member=ctx.member is not None,
-        is_active=room.is_active,
         my_role=ctx.member.room_role if ctx.member else None,
-        first_match_at=room.first_match_at,
         total_points=ctx.member.total_points if ctx.member else None,
-        scoring=_scoring(room),
-        rules_text=room.rules_text,
     )
 
 

@@ -33,6 +33,11 @@ class ScorerResultRequest(BaseModel):
     player_name: str
 
 
+class LeaderResultRequest(BaseModel):
+    # Команда-победитель спецпрогноза «лидер лиги» (РПЛ и т.п.).
+    team: str
+
+
 class PlayerSearchItem(BaseModel):
     api_id: int
     name: str

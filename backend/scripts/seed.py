@@ -32,7 +32,9 @@ async def upsert_matches(db) -> tuple[int, str]:
         print(f"WARN: {msg}")
         return 0, msg
     try:
-        fixtures = await football_api.fetch_fixtures()
+        fixtures = await football_api.fetch_fixtures(
+            settings.API_FOOTBALL_LEAGUE_ID, settings.API_FOOTBALL_SEASON
+        )
     except Exception as exc:
         msg = f"API-Football request failed: {exc}"
         print(f"WARN: {msg}")
@@ -58,6 +60,9 @@ async def upsert_matches(db) -> tuple[int, str]:
         if existing:
             existing.kickoff_at = fx["kickoff_at"]
             existing.match_date = fx["match_date"]
+            existing.league_id = fx["league_id"]
+            existing.season = fx["season"]
+            existing.round = fx["round"]
             existing.stage = fx["stage"]
             existing.group_name = fx["group_name"]
             existing.home_team = fx["home_team"]
@@ -108,6 +113,10 @@ async def ensure_room(
             password_hash=hash_password(password),
             first_match_at=earliest,
             created_by=None,  # claimed by the superadmin on first login
+            tournament_type="world_cup",
+            league_id=settings.API_FOOTBALL_LEAGUE_ID,
+            season=settings.API_FOOTBALL_SEASON,
+            special_kind="wc",
         )
     )
     return password

@@ -5,6 +5,7 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Match, Prediction, Room, RoomMember, User
+from app.services.tournament import tournament_match_conditions
 
 
 async def active_rooms(db: AsyncSession, user_id) -> list[Room]:
@@ -36,11 +37,18 @@ async def leaderboard(db: AsyncSession, room_id) -> list[tuple[str, int]]:
     return [(n, p) for n, p in rows]
 
 
-async def days_with_matches(db: AsyncSession, start: date, end: date) -> list[date]:
+async def days_with_matches(
+    db: AsyncSession, room: Room, start: date, end: date
+) -> list[date]:
+    """Дни с матчами В ПРЕДЕЛАХ турнира комнаты (иначе смешались бы лиги)."""
     rows = (
         await db.execute(
             select(Match.match_date)
-            .where(Match.match_date >= start, Match.match_date <= end)
+            .where(
+                Match.match_date >= start,
+                Match.match_date <= end,
+                *tournament_match_conditions(room),
+            )
             .group_by(Match.match_date)
             .order_by(Match.match_date)
         )
@@ -49,10 +57,14 @@ async def days_with_matches(db: AsyncSession, start: date, end: date) -> list[da
 
 
 async def tour_player_points(
-    db: AsyncSession, room_id, day: date
+    db: AsyncSession, room: Room, day: date
 ) -> list[tuple[str, int]]:
     """Per-player total points for a single match-day, all room members."""
-    match_ids = select(Match.id).where(Match.match_date == day).scalar_subquery()
+    match_ids = (
+        select(Match.id)
+        .where(Match.match_date == day, *tournament_match_conditions(room))
+        .scalar_subquery()
+    )
     total = func.coalesce(func.sum(Prediction.points_awarded), 0)
     rows = (
         await db.execute(
@@ -63,11 +75,11 @@ async def tour_player_points(
                 Prediction,
                 and_(
                     Prediction.user_id == User.id,
-                    Prediction.room_id == room_id,
+                    Prediction.room_id == room.id,
                     Prediction.match_id.in_(match_ids),
                 ),
             )
-            .where(RoomMember.room_id == room_id)
+            .where(RoomMember.room_id == room.id)
             .group_by(User.id, User.nickname)
             .order_by(total.desc(), User.nickname.asc())
         )
@@ -76,7 +88,7 @@ async def tour_player_points(
 
 
 async def tour_matches_for_user(
-    db: AsyncSession, room_id, user_id, day: date
+    db: AsyncSession, room: Room, user_id, day: date
 ) -> list[tuple[Match, Prediction | None]]:
     rows = (
         await db.execute(
@@ -85,22 +97,24 @@ async def tour_matches_for_user(
                 Prediction,
                 and_(
                     Prediction.match_id == Match.id,
-                    Prediction.room_id == room_id,
+                    Prediction.room_id == room.id,
                     Prediction.user_id == user_id,
                 ),
             )
-            .where(Match.match_date == day)
+            .where(Match.match_date == day, *tournament_match_conditions(room))
             .order_by(Match.kickoff_at)
         )
     ).all()
     return [(m, p) for m, p in rows]
 
 
-async def matches_of_day(db: AsyncSession, day: date) -> list[Match]:
+async def matches_of_day(db: AsyncSession, room: Room, day: date) -> list[Match]:
     return list(
         (
             await db.execute(
-                select(Match).where(Match.match_date == day).order_by(Match.kickoff_at)
+                select(Match)
+                .where(Match.match_date == day, *tournament_match_conditions(room))
+                .order_by(Match.kickoff_at)
             )
         ).scalars().all()
     )

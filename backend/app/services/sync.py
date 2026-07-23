@@ -12,9 +12,43 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Match
-from app.services import audit
+from app.models import Match, Room
+from app.services import audit, football_api
 from app.services.recalc import rescore_match
+from app.services.tournament import WORLD_CUP_LEAGUE_ID
+
+
+async def active_league_seasons(db: AsyncSession) -> list[tuple[int, int]]:
+    """Различные (league_id, season) активных турниров. Custom (league_id NULL)
+    сюда не попадает: его матчи выбирает админ вручную (фаза 3)."""
+    rows = (
+        await db.execute(
+            select(Room.league_id, Room.season)
+            .where(
+                Room.is_active.is_(True),
+                Room.league_id.is_not(None),
+                Room.season.is_not(None),
+            )
+            .distinct()
+        )
+    ).all()
+    return [(lid, season) for lid, season in rows]
+
+
+async def fetch_and_apply_all(db: AsyncSession, *, with_groups: bool = True) -> dict:
+    """Синхронизировать матчи по всем активным (league_id, season). Буквы групп
+    (/standings) тянутся только для ЧМ (групповой этап). Возвращает суммарные
+    счётчики. Не коммитит — транзакцией владеет вызывающий."""
+    total = {"created": 0, "updated": 0, "rescored": 0}
+    for league_id, season in await active_league_seasons(db):
+        use_groups = with_groups and league_id == WORLD_CUP_LEAGUE_ID
+        fixtures = await football_api.fetch_fixtures(
+            league_id, season, with_groups=use_groups
+        )
+        stats = await apply_fixtures(db, fixtures)
+        for k in total:
+            total[k] += stats[k]
+    return total
 
 
 async def apply_fixtures(db: AsyncSession, fixtures: list[dict]) -> dict:
@@ -48,6 +82,9 @@ async def apply_fixtures(db: AsyncSession, fixtures: list[dict]) -> dict:
 
         existing.kickoff_at = fx["kickoff_at"]
         existing.match_date = fx["match_date"]
+        existing.league_id = fx["league_id"]
+        existing.season = fx["season"]
+        existing.round = fx["round"]
         existing.stage = fx["stage"]
         if fx.get("group_name"):
             existing.group_name = fx["group_name"]

@@ -17,6 +17,7 @@ from app.services.simulation import (
     points_for,
     room_sim_totals,
 )
+from app.services.tournament import tournament_match_conditions
 
 router = APIRouter(prefix="/rooms/{room_id}/players", tags=["players"])
 
@@ -92,6 +93,7 @@ async def player_profile(
                     Prediction.user_id == uid,
                 ),
             )
+            .where(*tournament_match_conditions(ctx.room))
             .order_by(Match.kickoff_at)
         )
     ).all()

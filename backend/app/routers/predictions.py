@@ -21,6 +21,7 @@ from app.schemas.prediction import (
 from app.services.predictions import admin_set_prediction, set_prediction
 from app.services.recalc import room_multipliers_map, score_match
 from app.services.simulation import SimContext, effective_result, get_sim, points_for
+from app.services.tournament import match_belongs, tournament_match_conditions
 
 router = APIRouter(prefix="/rooms/{room_id}/predictions", tags=["predictions"])
 
@@ -44,7 +45,8 @@ async def batch(
     results: list[PredictionResult] = []
     for item in payload.predictions:
         match = matches.get(item.match_id)
-        if not match:
+        # Матч должен входить в этот турнир — иначе прогноз на чужую лигу.
+        if not match or not match_belongs(ctx.room, match):
             results.append(PredictionResult(match_id=item.match_id, accepted=False, reason="match_not_found"))
             continue
         accepted, reason = await set_prediction(
@@ -71,7 +73,7 @@ async def admin_set_user_prediction(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Superadmin access required")
 
     match = await db.get(Match, match_id)
-    if not match:
+    if not match or not match_belongs(ctx.room, match):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Match not found")
     member = await db.get(RoomMember, (ctx.room.id, user_id))
     if not member:
@@ -183,7 +185,7 @@ async def tour_leaderboard(
     matches = (
         await db.execute(
             select(Match)
-            .where(Match.match_date == tour_date)
+            .where(Match.match_date == tour_date, *tournament_match_conditions(ctx.room))
             .order_by(Match.kickoff_at)
         )
     ).scalars().all()

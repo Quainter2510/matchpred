@@ -164,6 +164,54 @@ function Cell({ cell }: { cell: { text: string; cls: string } | null }) {
   return <td className={`text-center ${cell.cls}`}>{cell.text}</td>;
 }
 
+// Классическая вертикальная турнирная таблица (лиги — РПЛ/ЛЧ): №, команда, И,
+// голы, разница, очки. Шахматка 4×4 подходит только для маленьких групп ЧМ.
+function LeagueTable({ group }: { group: GroupStanding }) {
+  return (
+    <div className="card overflow-x-auto">
+      {group.name && <h3 className="mb-2 font-semibold">{group.name}</h3>}
+      <table className="w-full min-w-[22rem] text-xs sm:text-sm">
+        <thead>
+          <tr className="border-b text-slate-500">
+            <th className="w-8 py-1 text-center">#</th>
+            <th className="py-1 pr-1 text-left">Команда</th>
+            <th className="w-8 text-center" title="Игры">
+              И
+            </th>
+            <th className="w-14 text-center" title="Забито — пропущено">
+              З-П
+            </th>
+            <th className="w-8 text-center" title="Разница мячей">
+              РМ
+            </th>
+            <th className="w-8 text-center" title="Очки">
+              О
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {group.teams.map((t, i) => (
+            <tr key={t.team} className="border-b last:border-b-0">
+              <td className="py-1.5 text-center text-slate-400">{i + 1}</td>
+              <td className="max-w-0 truncate py-1.5 pr-1">
+                <TeamName team={t.team} short />
+              </td>
+              <td className="text-center tabular-nums">{t.played}</td>
+              <td className="text-center tabular-nums">
+                {t.goals_for}-{t.goals_against}
+              </td>
+              <td className="text-center tabular-nums">
+                {t.goal_diff > 0 ? `+${t.goal_diff}` : t.goal_diff}
+              </td>
+              <td className="text-center font-bold tabular-nums">{t.points}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function PlayoffMatchRow({ m }: { m: StandingsMatch }) {
   const hasScore = m.home_score != null && m.away_score != null;
   return (
@@ -189,10 +237,16 @@ function PlayoffMatchRow({ m }: { m: StandingsMatch }) {
   );
 }
 
-// Вкладка «ЧМ-2026»: реальное турнирное положение — таблицы групп (шахматка
-// 4×4: результаты очных встреч, разница мячей, очки) и матчи плей-офф по
-// стадиям. В режиме симуляции показывает симулированные результаты.
-export default function WcStandings({ roomId }: { roomId: string }) {
+// Турнирное положение. ЧМ: шахматки групп (4×4) + плей-офф + бомбардиры. Лиги
+// (РПЛ/ЛЧ): одна классическая таблица, без бомбардиров и плей-офф. В режиме
+// симуляции показывает симулированные результаты.
+export default function WcStandings({
+  roomId,
+  tournamentType = "world_cup",
+}: {
+  roomId: string;
+  tournamentType?: string;
+}) {
   const { data, isLoading } = useQuery({
     queryKey: ["standings", roomId],
     queryFn: () => api.standings(roomId),
@@ -203,17 +257,26 @@ export default function WcStandings({ roomId }: { roomId: string }) {
   if (!data || (!data.groups.length && !data.playoff.length))
     return <p className="text-slate-500">Матчи ещё не добавлены.</p>;
 
+  const isWorldCup = tournamentType === "world_cup";
+
   return (
     <div className="space-y-6">
-      <TopScorersBlock roomId={roomId} />
+      {isWorldCup && <TopScorersBlock roomId={roomId} />}
 
-      {data.groups.length > 0 && (
-        <div className="grid gap-4 lg:grid-cols-2">
-          {data.groups.map((g) => (
-            <GroupTable key={g.name} group={g} />
-          ))}
-        </div>
-      )}
+      {data.groups.length > 0 &&
+        (isWorldCup ? (
+          <div className="grid gap-4 lg:grid-cols-2">
+            {data.groups.map((g) => (
+              <GroupTable key={g.name} group={g} />
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {data.groups.map((g) => (
+              <LeagueTable key={g.name} group={g} />
+            ))}
+          </div>
+        ))}
 
       {data.playoff.length > 0 && (
         <div className="space-y-4">

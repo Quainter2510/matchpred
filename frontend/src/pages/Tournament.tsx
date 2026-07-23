@@ -148,16 +148,24 @@ function dayStatus(d: MatchDay): { cls: string; label: string; labelCls: string 
 }
 
 // Стандартный регламент, когда админ не заполнил свой текст.
-function defaultRules(s: RoomScoring | null | undefined): string {
+function defaultRules(
+  s: RoomScoring | null | undefined,
+  specialKind?: string
+): string {
   if (!s) return "Регламент не заполнен.";
-  return [
+  const lines = [
     "Начисление очков:",
     `• точный счёт — ${s.points_exact}`,
     `• разница мячей — ${s.points_diff}`,
     `• исход (победитель/ничья) — ${s.points_outcome}`,
-    `• чемпион турнира — ${s.points_champion}`,
-    `• лучший бомбардир — ${s.points_scorer}`,
-  ].join("\n");
+  ];
+  if (specialKind === "leader") {
+    lines.push(`• лидер лиги на финальный момент — ${s.points_champion}`);
+  } else if (specialKind === "wc" || specialKind === undefined) {
+    lines.push(`• чемпион турнира — ${s.points_champion}`);
+    lines.push(`• лучший бомбардир — ${s.points_scorer}`);
+  }
+  return lines.join("\n");
 }
 
 export default function Tournament() {
@@ -224,7 +232,9 @@ export default function Tournament() {
   };
 
   const [showRules, setShowRules] = useState(false);
-  const rulesText = room.data?.rules_text || defaultRules(room.data?.scoring);
+  const rulesText =
+    room.data?.rules_text ||
+    defaultRules(room.data?.scoring, room.data?.special_kind);
 
   return (
     <div className="space-y-6">
@@ -292,7 +302,7 @@ export default function Tournament() {
         {([
           ["table", "Таблица"],
           ["predictions", "Прогнозы"],
-          ["wc", "ЧМ-2026"],
+          ["wc", room.data?.tournament_type === "world_cup" ? "ЧМ-2026" : "Положение"],
         ] as const).map(([id, label]) => (
           <button
             key={id}
@@ -319,17 +329,28 @@ export default function Tournament() {
               roomId={roomId!}
               started={started}
               isAdmin={isAdmin}
+              specialKind={room.data?.special_kind}
             />
           )}
         </section>
       )}
 
-      {tab === "wc" && <WcStandings roomId={roomId!} />}
+      {tab === "wc" && (
+        <WcStandings
+          roomId={roomId!}
+          tournamentType={room.data?.tournament_type}
+        />
+      )}
 
       {tab === "predictions" && (
         <div className="space-y-6">
           {/* Спецпрогноз доступен только до старта турнира. */}
-          {!started && <SpecialPredictionCard roomId={roomId!} />}
+          {!started && (
+            <SpecialPredictionCard
+              roomId={roomId!}
+              specialKind={room.data?.special_kind}
+            />
+          )}
 
           <section className="card">
             <h2 className="mb-3 text-lg font-semibold">Туры</h2>

@@ -55,7 +55,9 @@ async def main() -> None:
     print("-" * 60)
 
     # 2) Что строит наш парсер.
-    groups = await football_api.fetch_groups()
+    groups = await football_api.fetch_groups(
+        settings.API_FOOTBALL_LEAGUE_ID, settings.API_FOOTBALL_SEASON
+    )
     print(f"fetch_groups() -> {len(groups)} teams")
     for i, (team, letter) in enumerate(groups.items()):
         if i >= 12:

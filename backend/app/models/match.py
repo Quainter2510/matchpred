@@ -22,6 +22,7 @@ class Match(Base):
     __table_args__ = (
         Index("ix_matches_match_date", "match_date"),
         Index("ix_matches_kickoff_at", "kickoff_at"),
+        Index("ix_matches_league_season", "league_id", "season", "kickoff_at"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -30,6 +31,13 @@ class Match(Base):
     api_football_id: Mapped[int | None] = mapped_column(
         Integer, unique=True, nullable=True
     )
+    # Реальная лига+сезон API-Football, к которым относится матч. Турнир
+    # отбирает свой пул матчей по этим меткам (см. services/tournament.py).
+    # round — сырой `round` из API (напр. "Regular Season - 5"), для выбора
+    # длительности «с какого по какой тур».
+    league_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    season: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    round: Mapped[str | None] = mapped_column(String(40), nullable=True)
     match_date: Mapped[date] = mapped_column(Date, nullable=False)
     kickoff_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False

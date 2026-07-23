@@ -27,6 +27,7 @@ from app.schemas.standings import (
 from app.services.players_catalog import normalize_name, resolve_player
 from app.services.simulation import SimContext, effective_result, get_sim
 from app.services.top_scorers import get_snapshot
+from app.services.tournament import tournament_match_conditions, type_config
 
 router = APIRouter(prefix="/rooms/{room_id}/standings", tags=["standings"])
 
@@ -47,6 +48,77 @@ def _blank_stats() -> dict:
     return {"played": 0, "goals_for": 0, "goals_against": 0, "points": 0}
 
 
+# Типы турниров, положение которых — одна лиговая таблица (без групп/плей-офф).
+SINGLE_TABLE_TYPES = {"rpl"}
+
+
+def _apply_match_to_stats(teams: dict, home_team, away_team, home, away) -> None:
+    """Учесть завершённый матч в статистике команд (очки 3/1/0, забитые)."""
+    ht = teams.setdefault(home_team, _blank_stats())
+    at = teams.setdefault(away_team, _blank_stats())
+    ht["played"] += 1
+    at["played"] += 1
+    ht["goals_for"] += home
+    ht["goals_against"] += away
+    at["goals_for"] += away
+    at["goals_against"] += home
+    if home > away:
+        ht["points"] += 3
+    elif away > home:
+        at["points"] += 3
+    else:
+        ht["points"] += 1
+        at["points"] += 1
+
+
+def _ranked_rows(teams: dict) -> list[GroupTeamRow]:
+    rows = [
+        GroupTeamRow(
+            team=name,
+            played=s["played"],
+            goals_for=s["goals_for"],
+            goals_against=s["goals_against"],
+            goal_diff=s["goals_for"] - s["goals_against"],
+            points=s["points"],
+        )
+        for name, s in teams.items()
+    ]
+    # Место: очки → разница → забитые → алфавит.
+    rows.sort(key=lambda t: (-t.points, -t.goal_diff, -t.goals_for, t.team))
+    return rows
+
+
+async def _single_table_standings(
+    ctx: RoomContext, sim: SimContext, matches: list[Match]
+) -> StandingsOut:
+    """Одна лиговая таблица (РПЛ): все команды турнира в одном зачёте, без
+    плей-офф. Считается по завершённым (в т.ч. симулированно) матчам турнира."""
+    teams: dict[str, dict] = {}
+    brief_matches: list[StandingsMatch] = []
+    for m in matches:
+        status, home, away = effective_result(m, sim)
+        brief_matches.append(
+            StandingsMatch(
+                id=m.id,
+                home_team=m.home_team,
+                away_team=m.away_team,
+                home_score=home,
+                away_score=away,
+                status=status,
+                kickoff_at=m.kickoff_at,
+            )
+        )
+        teams.setdefault(m.home_team, _blank_stats())
+        teams.setdefault(m.away_team, _blank_stats())
+        if status == "finished" and home is not None and away is not None:
+            _apply_match_to_stats(teams, m.home_team, m.away_team, home, away)
+    label = type_config(ctx.room.tournament_type)["label"]
+    return StandingsOut(
+        groups=[GroupStanding(name=label, teams=_ranked_rows(teams), matches=brief_matches)],
+        playoff=[],
+    )
+
+
 @router.get("", response_model=StandingsOut)
 async def standings(
     ctx: RoomContext = Depends(require_room_member),
@@ -54,8 +126,15 @@ async def standings(
     db: AsyncSession = Depends(get_db),
 ):
     matches = (
-        await db.execute(select(Match).order_by(Match.kickoff_at))
+        await db.execute(
+            select(Match)
+            .where(*tournament_match_conditions(ctx.room))
+            .order_by(Match.kickoff_at)
+        )
     ).scalars().all()
+
+    if ctx.room.tournament_type in SINGLE_TABLE_TYPES:
+        return await _single_table_standings(ctx, sim, matches)
 
     groups: dict[str, dict] = {}  # буква -> {"teams": {...}, "matches": [...]}
     playoff: dict[str, list[StandingsMatch]] = {}  # код стадии -> матчи

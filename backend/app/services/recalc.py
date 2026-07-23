@@ -22,6 +22,7 @@ from app.models import (
 from app.redis_client import invalidate_leaderboard_cache
 from app.services.players_catalog import canonical_scorer_id
 from app.services.scoring import determine_winner, score_prediction
+from app.services.tournament import WORLD_CUP_LEAGUE_ID
 
 
 async def _rooms_map(db: AsyncSession) -> dict[uuid.UUID, Room]:
@@ -212,7 +213,18 @@ async def recalculate_all(db: AsyncSession) -> dict:
 
 
 async def _score_champion(db: AsyncSession, finished: list[Match]) -> int:
-    final = next((m for m in finished if "final" == (m.stage or "").lower()), None)
+    """Автоначисление за чемпиона — ТОЛЬКО для турниров ЧМ (special_kind='wc'):
+    победитель финала. Лидер лиги (РПЛ) и т.п. начисляются вручную через
+    score_leader — здесь не трогаются."""
+    final = next(
+        (
+            m
+            for m in finished
+            if "final" == (m.stage or "").lower()
+            and m.league_id == WORLD_CUP_LEAGUE_ID
+        ),
+        None,
+    )
     if not final or final.home_score_ft is None or final.away_score_ft is None:
         return 0
     # Чемпион — победитель финала при ЛЮБОМ исходе. Если основное время — ничья
@@ -235,9 +247,38 @@ async def _score_champion(db: AsyncSession, finished: list[Match]) -> int:
     awarded = 0
     for sp in rows:
         room = rooms.get(sp.room_id)
-        if not room or not room.is_active:
+        if not room or not room.is_active or room.special_kind != "wc":
             continue
         pts = room.points_champion if sp.champion_team == winner else 0
+        sp.champion_points = pts
+        if pts:
+            await _bump_member(db, sp.room_id, sp.user_id, pts, 0)
+            awarded += 1
+    if awarded:
+        await invalidate_leaderboard_cache()
+    return awarded
+
+
+async def score_leader(db: AsyncSession, room_id: uuid.UUID, team: str) -> int:
+    """Начислить очки за спецпрогноз «команда» (лидер лиги РПЛ и т.п.) **в одной
+    комнате**: тем, кто указал ``team`` в champion_team, — room.points_champion,
+    остальным 0. Идемпотентно (только champion_points IS NULL). Ответ задаёт
+    админ комнаты вручную. Сохраняет ответ в room.special_result_team."""
+    room = await db.get(Room, room_id)
+    if not room or not room.is_active:
+        return 0
+    room.special_result_team = team
+    rows = (
+        await db.execute(
+            select(SpecialPrediction).where(
+                SpecialPrediction.room_id == room_id,
+                SpecialPrediction.champion_points.is_(None),
+            )
+        )
+    ).scalars().all()
+    awarded = 0
+    for sp in rows:
+        pts = room.points_champion if sp.champion_team == team else 0
         sp.champion_points = pts
         if pts:
             await _bump_member(db, sp.room_id, sp.user_id, pts, 0)

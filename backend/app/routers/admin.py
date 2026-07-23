@@ -13,9 +13,9 @@ from app.database import get_db
 from app.dependencies import require_superadmin
 from app.models import AuditLog, User
 from app.schemas.admin import AuditLogOut, TransferRequest
-from app.services import audit, football_api
+from app.services import audit
 from app.services.recalc import recalculate_all
-from app.services.sync import apply_fixtures
+from app.services.sync import fetch_and_apply_all
 from app.services.top_scorers import refresh_top_scorers
 
 router = APIRouter(tags=["admin"])
@@ -34,6 +34,7 @@ EVENT_LABELS_RU = {
     "prediction_updated": "Изменён прогноз",
     "scores_recalculated": "Пересчёт очков",
     "scorer_result_set": "Итоговый бомбардир (начисление)",
+    "leader_result_set": "Итоговый лидер лиги (начисление)",
     "champion_selected": "Выбран чемпион",
     "top_scorer_selected": "Выбран бомбардир",
     "tournament_password_changed": "Смена пароля турнира",
@@ -53,11 +54,10 @@ async def sync_api(
     user: User = Depends(require_superadmin), db: AsyncSession = Depends(get_db)
 ):
     try:
-        fixtures = await football_api.fetch_fixtures()
+        stats = await fetch_and_apply_all(db, with_groups=True)
     except Exception as exc:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"API-Football error: {exc}")
 
-    stats = await apply_fixtures(db, fixtures)
     await audit.log_event(
         db,
         "api_sync",

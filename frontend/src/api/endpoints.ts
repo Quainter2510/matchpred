@@ -10,6 +10,9 @@ export interface Me {
   vk_linked: boolean;
 }
 
+export type TournamentType = "world_cup" | "rpl" | "ucl" | "custom";
+export type SpecialKind = "wc" | "leader" | "stage_or_champion" | "none";
+
 export interface Room {
   id: string;
   name: string;
@@ -17,6 +20,25 @@ export interface Room {
   is_member: boolean;
   is_active: boolean;
   my_role: "admin" | "player" | null;
+  tournament_type: TournamentType;
+  special_kind: SpecialKind;
+}
+
+export interface TournamentTypeInfo {
+  id: TournamentType;
+  label: string;
+  special_kind: SpecialKind;
+  has_league: boolean;
+  needs_season: boolean;
+}
+
+export interface TournamentRound {
+  round: string;
+  first_kickoff: string;
+  last_kickoff: string;
+  first_tour_date: string;
+  last_tour_date: string;
+  match_count: number;
 }
 
 export interface RoomScoring {
@@ -33,6 +55,22 @@ export interface RoomDetail extends Room {
   place: number | null;
   scoring: RoomScoring | null;
   rules_text: string | null;
+  league_id: number | null;
+  season: number | null;
+  starts_on: string | null;
+  ends_on: string | null;
+  special_result_team: string | null;
+}
+
+export interface CreateTournamentBody {
+  name: string;
+  password: string;
+  tournament_type: TournamentType;
+  season?: number | null;
+  starts_on?: string | null;
+  ends_on?: string | null;
+  first_match_at?: string | null;
+  scoring?: RoomScoring | null;
 }
 
 export interface MatchDay {
@@ -292,9 +330,13 @@ export const api = {
   listRooms: (q?: string) =>
     client.get<Room[]>("/rooms", { params: q ? { q } : {} }).then((x) => x.data),
   myRooms: () => client.get<Room[]>("/rooms/my").then((x) => x.data),
-  createRoom: (name: string, password: string, first_match_at?: string) =>
+  createTournament: (body: CreateTournamentBody) =>
+    client.post<RoomDetail>("/rooms", body).then((x) => x.data),
+  tournamentTypes: () =>
+    client.get<TournamentTypeInfo[]>("/rooms/tournament-types").then((x) => x.data),
+  availableRounds: (type: TournamentType, season: number) =>
     client
-      .post<RoomDetail>("/rooms", { name, password, first_match_at })
+      .get<TournamentRound[]>("/rooms/available-rounds", { params: { type, season } })
       .then((x) => x.data),
   joinRoom: (roomId: string, password: string) =>
     client.post<Room>(`${r(roomId)}/join`, { password }).then((x) => x.data),
@@ -427,6 +469,11 @@ export const api = {
   scorerResult: (roomId: string, player_api_id: number, player_name: string) =>
     client
       .post(`${r(roomId)}/special-prediction/scorer-result`, { player_api_id, player_name })
+      .then((x) => x.data),
+  // ---- leader result (room admin): итоговый лидер лиги (РПЛ и т.п.) ----
+  leaderResult: (roomId: string, team: string) =>
+    client
+      .post(`${r(roomId)}/special-prediction/leader-result`, { team })
       .then((x) => x.data),
 
   // ---- global admin (superadmin only) ----

@@ -1,8 +1,9 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import (
     Boolean,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -19,9 +20,10 @@ from app.database import Base
 
 
 class Room(Base):
-    """A single prediction competition. Many rooms run in parallel over the
-    same (global) set of matches; each room has its own password, members,
-    predictions and leaderboard. Only a superadmin can create rooms."""
+    """Один турнир прогнозов. Много турниров идут параллельно; у каждого свой
+    тип, привязка к реальной лиге+сезону, пул матчей, пароль, участники,
+    прогнозы и таблица. Создаёт только суперадмин. (Историческое имя таблицы —
+    `rooms`; в UI это «турнир».)"""
 
     __tablename__ = "rooms"
     __table_args__ = (Index("ix_rooms_name", "name"),)
@@ -43,6 +45,26 @@ class Room(Base):
     # is_active=False means the room is archived: read-only, not scored, but the
     # leaderboard stays viewable.
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # ---- Тип турнира и привязка к реальной лиге ----
+    # tournament_type: world_cup | rpl | ucl | custom (см. services/tournament.py).
+    # league_id/season — реальная лига+сезон API-Football (None у custom).
+    # tour_anchor — якорный день недели туров (Пн=0…Вс=6); NULL = суточная
+    #   группировка (ЧМ). starts_on/ends_on — окно включения матчей по метке
+    #   тура (NULL = весь турнир). special_kind — вид спецпрогноза.
+    #   special_result_team — вручную заданный ответ спецпрогноза (лидер лиги).
+    tournament_type: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="world_cup"
+    )
+    league_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    season: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tour_anchor: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    starts_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    ends_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    special_kind: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="wc"
+    )
+    special_result_team: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     # Free-form regulations text shown behind the "i" button next to the
     # title. NULL = show the default description built from the point values.

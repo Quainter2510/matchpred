@@ -10,15 +10,23 @@ import PlayerSearch from "../../components/PlayerSearch";
 
 const MULTIPLIERS = [0, 1, 2, 3];
 
-const RULE_FIELDS: { key: keyof RoomScoring; label: string }[] = [
-  { key: "points_exact", label: "Точный счёт" },
-  { key: "points_diff", label: "Разница мячей" },
-  { key: "points_outcome", label: "Исход (победитель/ничья)" },
-  { key: "points_champion", label: "Чемпион турнира" },
-  { key: "points_scorer", label: "Лучший бомбардир" },
-];
+function ruleFields(specialKind: string): { key: keyof RoomScoring; label: string }[] {
+  const base: { key: keyof RoomScoring; label: string }[] = [
+    { key: "points_exact", label: "Точный счёт" },
+    { key: "points_diff", label: "Разница мячей" },
+    { key: "points_outcome", label: "Исход (победитель/ничья)" },
+  ];
+  if (specialKind === "leader") {
+    base.push({ key: "points_champion", label: "Лидер лиги" });
+  } else if (specialKind === "wc") {
+    base.push({ key: "points_champion", label: "Чемпион турнира" });
+    base.push({ key: "points_scorer", label: "Лучший бомбардир" });
+  }
+  return base;
+}
 
 function ScoringRules({ room }: { room: RoomDetail }) {
+  const RULE_FIELDS = ruleFields(room.special_kind);
   const qc = useQueryClient();
   const [vals, setVals] = useState<RoomScoring>(
     room.scoring || {
@@ -428,6 +436,63 @@ function ScorerResult({ roomId }: { roomId: string }) {
   );
 }
 
+// Итоговый лидер лиги (спецпрогноз типа `leader`, напр. РПЛ) — начисляет очки
+// вручную, аналогично бомбардиру, но по команде-победителю.
+function LeaderResult({ roomId }: { roomId: string }) {
+  const qc = useQueryClient();
+  const standings = useQuery({
+    queryKey: ["standings", roomId],
+    queryFn: () => api.standings(roomId),
+  });
+  const teams = Array.from(
+    new Set((standings.data?.groups.flatMap((g) => g.teams) || []).map((t) => t.team))
+  ).sort((a, b) => a.localeCompare(b, "ru"));
+  const [team, setTeam] = useState("");
+
+  const award = useMutation({
+    mutationFn: () => api.leaderResult(roomId, team),
+    onSuccess: (r: any) => {
+      alert(`Начислено игрокам: ${r.awarded}`);
+      qc.invalidateQueries();
+    },
+    onError: (e: any) => alert(e.response?.data?.detail || "Ошибка"),
+  });
+
+  return (
+    <section className="card max-w-lg space-y-3">
+      <h2 className="text-lg font-semibold">Итоговый лидер лиги</h2>
+      <p className="text-sm text-slate-500">
+        Укажите команду-лидера на финальный момент и начислите очки всем, кто её
+        угадал — только в этом соревновании.
+      </p>
+      {teams.length > 0 ? (
+        <select className="input" value={team} onChange={(e) => setTeam(e.target.value)}>
+          <option value="">— выберите команду —</option>
+          {teams.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <input
+          className="input"
+          value={team}
+          onChange={(e) => setTeam(e.target.value)}
+          placeholder="Название команды"
+        />
+      )}
+      <button
+        className="btn-primary"
+        disabled={!team.trim() || award.isPending}
+        onClick={() => award.mutate()}
+      >
+        {award.isPending ? "Начисление…" : "Начислить очки за лидера"}
+      </button>
+    </section>
+  );
+}
+
 export default function RoomAdmin() {
   const { roomId } = useParams<{ roomId: string }>();
   const isSuper = useAuth((s) => s.isSuperadmin());
@@ -452,7 +517,9 @@ export default function RoomAdmin() {
       </div>
       <Members roomId={roomId!} />
       <Multipliers roomId={roomId!} />
-      <ScorerResult roomId={roomId!} />
+      {/* Итоговый результат спецпрогноза — по типу турнира. */}
+      {room.data?.special_kind === "wc" && <ScorerResult roomId={roomId!} />}
+      {room.data?.special_kind === "leader" && <LeaderResult roomId={roomId!} />}
       <RoomPassword roomId={roomId!} />
       {room.data && <RulesText room={room.data} />}
       {isSuper && room.data && <ScoringRules room={room.data} />}

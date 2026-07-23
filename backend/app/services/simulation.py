@@ -30,6 +30,7 @@ from app.dependencies import get_current_user
 from app.models import Match, Prediction, Room, SpecialPrediction, User
 from app.services.recalc import room_multipliers_map
 from app.services.scoring import score_prediction
+from app.services.tournament import tournament_match_conditions
 
 SIM_HEADER = "X-Sim-Now"
 
@@ -144,7 +145,12 @@ async def room_sim_totals(
     moment: every prediction in the room is scored against effective results;
     special points already awarded in the DB are added on top."""
     matches = {
-        m.id: m for m in (await db.execute(select(Match))).scalars().all()
+        m.id: m
+        for m in (
+            await db.execute(
+                select(Match).where(*tournament_match_conditions(room))
+            )
+        ).scalars().all()
     }
     mults = await room_multipliers_map(db, room.id)
     preds = (

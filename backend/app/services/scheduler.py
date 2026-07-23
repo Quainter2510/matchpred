@@ -12,9 +12,9 @@ from sqlalchemy import and_, or_, select
 from app.config import settings
 from app.database import AsyncSessionLocal
 from app.models import Match
-from app.services import audit, football_api
+from app.services import audit
 from app.services.recalc import recalculate_all
-from app.services.sync import apply_fixtures
+from app.services.sync import fetch_and_apply_all
 from app.services.top_scorers import refresh_top_scorers
 
 log = logging.getLogger("scheduler")
@@ -53,20 +53,18 @@ async def sync_tick(force: bool = False) -> None:
     if not force and not await _should_poll():
         return
     try:
-        # Буквы групп (/standings) тянем только в ежедневном полном синке —
-        # live-тик обходится одним запросом к API.
-        fixtures = await football_api.fetch_fixtures(with_groups=force)
+        # Буквы групп (/standings, только ЧМ) тянем лишь в ежедневном полном
+        # синке — live-тик обходится одним запросом к API на лигу.
+        async with AsyncSessionLocal() as db:
+            stats = await fetch_and_apply_all(db, with_groups=force)
+            if stats["created"] or stats["updated"]:
+                await audit.log_event(db, "api_sync", details={**stats, "auto": True})
+            await db.commit()
+            await recalculate_all(db)
+            await db.commit()
     except Exception as exc:  # network errors must not crash the scheduler
         log.warning("API-Football sync failed: %s", exc)
         return
-
-    async with AsyncSessionLocal() as db:
-        stats = await apply_fixtures(db, fixtures)
-        if stats["created"] or stats["updated"]:
-            await audit.log_event(db, "api_sync", details={**stats, "auto": True})
-        await db.commit()
-        await recalculate_all(db)
-        await db.commit()
     log.info("sync_tick done: %s", stats)
 
 

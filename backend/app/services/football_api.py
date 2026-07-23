@@ -10,7 +10,8 @@ import httpx
 
 from app.config import settings
 from app.services import players_catalog
-from app.services.tours import tour_date
+from app.services.tournament import league_tour_anchor
+from app.services.tours import tour_key
 
 # Настоящая группа в /standings называется "Group A".."Group L". Кроме них там
 # бывают служебные таблицы вроде "Ranking of third-placed teams" — их игнорируем.
@@ -56,7 +57,12 @@ async def _get(path: str, params: dict) -> dict:
         return data
 
 
-def _normalize_fixture(fx: dict, groups: dict[str, str] | None = None) -> dict:
+def _normalize_fixture(
+    fx: dict,
+    league_id: int,
+    season: int,
+    groups: dict[str, str] | None = None,
+) -> dict:
     fixture = fx["fixture"]
     teams = fx["teams"]
     league = fx.get("league", {})
@@ -73,7 +79,8 @@ def _normalize_fixture(fx: dict, groups: dict[str, str] | None = None) -> dict:
         home_score, away_score = goals.get("home"), goals.get("away")
     kickoff = datetime.fromisoformat(fixture["date"]).astimezone(timezone.utc)
     raw_status = fixture.get("status", {}).get("short", "NS")
-    stage = (league.get("round") or "group").lower().replace(" ", "_")[:40]
+    raw_round = league.get("round")
+    stage = (raw_round or "group").lower().replace(" ", "_")[:40]
     home = teams["home"]["name"]
     away = teams["away"]["name"]
     # Буква группы есть только у матчей группового этапа — берём из таблицы групп
@@ -92,8 +99,12 @@ def _normalize_fixture(fx: dict, groups: dict[str, str] | None = None) -> dict:
         winner_team = None
     return {
         "api_football_id": fixture["id"],
+        "league_id": league_id,
+        "season": season,
+        "round": (raw_round or None) and raw_round[:40],
         "kickoff_at": kickoff,
-        "match_date": tour_date(kickoff),
+        # Метка тура по схеме лиги: суточная (ЧМ) или недельная (РПЛ/ЛЧ).
+        "match_date": tour_key(kickoff, league_tour_anchor(league_id)),
         "stage": stage,
         "group_name": group_name,
         "home_team": home,
@@ -105,8 +116,8 @@ def _normalize_fixture(fx: dict, groups: dict[str, str] | None = None) -> dict:
     }
 
 
-async def fetch_groups() -> dict[str, str]:
-    """Сопоставление «название сборной → буква группы» из /standings.
+async def fetch_groups(league_id: int, season: int) -> dict[str, str]:
+    """Сопоставление «название команды → буква группы» из /standings.
 
     Раунд матча в API содержит только номер тура, без буквы группы, поэтому
     группу берём из турнирной таблицы. Возвращает {} при недоступности данных
@@ -115,10 +126,7 @@ async def fetch_groups() -> dict[str, str]:
     try:
         data = await _get(
             "/standings",
-            {
-                "league": settings.API_FOOTBALL_LEAGUE_ID,
-                "season": settings.API_FOOTBALL_SEASON,
-            },
+            {"league": league_id, "season": season},
         )
     except Exception:
         return {}
@@ -135,23 +143,67 @@ async def fetch_groups() -> dict[str, str]:
     return out
 
 
-async def fetch_fixtures(with_groups: bool = True) -> list[dict]:
-    """All fixtures for the configured league + season.
+async def fetch_fixtures(
+    league_id: int, season: int, with_groups: bool = True
+) -> list[dict]:
+    """All fixtures for the given league + season.
 
     with_groups=False пропускает запрос /standings (буквы групп) — так
     5-минутный live-опрос стоит один запрос к API вместо двух. Группы у уже
     созданных матчей при этом не затираются (apply_fixtures обновляет
-    group_name только когда он есть в данных).
+    group_name только когда он есть в данных). Буквы групп есть только у
+    турниров с групповым этапом (ЧМ) — для лиг вызывать с with_groups=False.
     """
     data = await _get(
         "/fixtures",
-        {
-            "league": settings.API_FOOTBALL_LEAGUE_ID,
-            "season": settings.API_FOOTBALL_SEASON,
-        },
+        {"league": league_id, "season": season},
     )
-    groups = await fetch_groups() if with_groups else None
-    return [_normalize_fixture(fx, groups) for fx in data.get("response", [])]
+    groups = await fetch_groups(league_id, season) if with_groups else None
+    return [
+        _normalize_fixture(fx, league_id, season, groups)
+        for fx in data.get("response", [])
+    ]
+
+
+async def fetch_rounds(league_id: int, season: int) -> list[dict]:
+    """Туры лиги с датами — для панели создания турнира (выбор «с тура по тур»,
+    под капотом → окно дат). Группирует фикстуры по `round`, сохраняя порядок
+    появления, и считает границы недельного тура (по схеме лиги) для первого и
+    последнего матча каждого раунда.
+
+    Возвращает `[{round, first_kickoff, last_kickoff, first_tour_date,
+    last_tour_date, match_count}]`.
+    """
+    data = await _get("/fixtures", {"league": league_id, "season": season})
+    anchor = league_tour_anchor(league_id)
+    order: list[str] = []
+    agg: dict[str, dict] = {}
+    for fx in data.get("response", []):
+        rnd = (fx.get("league", {}).get("round") or "").strip()
+        if not rnd:
+            continue
+        kickoff = datetime.fromisoformat(fx["fixture"]["date"]).astimezone(timezone.utc)
+        if rnd not in agg:
+            order.append(rnd)
+            agg[rnd] = {"first": kickoff, "last": kickoff, "count": 0}
+        rec = agg[rnd]
+        rec["first"] = min(rec["first"], kickoff)
+        rec["last"] = max(rec["last"], kickoff)
+        rec["count"] += 1
+    out = []
+    for rnd in order:
+        rec = agg[rnd]
+        out.append(
+            {
+                "round": rnd,
+                "first_kickoff": rec["first"],
+                "last_kickoff": rec["last"],
+                "first_tour_date": tour_key(rec["first"], anchor),
+                "last_tour_date": tour_key(rec["last"], anchor),
+                "match_count": rec["count"],
+            }
+        )
+    return out
 
 
 async def fetch_wc_team_ids() -> dict[int, str]:

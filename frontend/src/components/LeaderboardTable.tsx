@@ -63,16 +63,24 @@ export default function LeaderboardTable({
   entries,
   roomId,
   started = false,
+  specialKind = "wc",
 }: {
   entries: LeaderboardEntry[];
   roomId: string;
   started?: boolean;
   isAdmin?: boolean;
+  specialKind?: string;
 }) {
   const me = useAuth((s) => s.user);
   // Колонка «участие подтверждено» нужна только до старта турнира — после
   // начала первого матча пропадает у всех (галочки остаются в админке комнаты).
   const showParticipation = !started;
+  // Столбцы спецпрогноза зависят от типа: ЧМ — чемпион+бомбардир; лидер лиги —
+  // только «лидер»; без спецпрогноза — ничего.
+  const showChampion = specialKind === "wc" || specialKind === "leader";
+  const showScorer = specialKind === "wc";
+  const championTitle = specialKind === "leader" ? "Лидер лиги" : "Чемпион";
+  const championIcon = specialKind === "leader" ? "🥇" : "🏆";
 
   if (!entries.length)
     return <div className="text-slate-500">Пока нет участников.</div>;
@@ -85,8 +93,12 @@ export default function LeaderboardTable({
           {showParticipation && (
             <th className="w-12 text-center" title="Участие подтверждено">✅</th>
           )}
-          <th className="w-12 text-center" title="Чемпион">🏆</th>
-          <th className="w-12 text-center" title="Бомбардир">⚽</th>
+          {showChampion && (
+            <th className="w-12 text-center" title={championTitle}>{championIcon}</th>
+          )}
+          {showScorer && (
+            <th className="w-12 text-center" title="Бомбардир">⚽</th>
+          )}
           <th className="text-center">Очки</th>
           <th className="w-16 text-center">Точных</th>
         </tr>
@@ -133,12 +145,16 @@ export default function LeaderboardTable({
                 )}
               </td>
             )}
-            <td className="text-center">
-              <ChampionCell e={e} started={started} />
-            </td>
-            <td className="text-center">
-              <ScorerCell e={e} started={started} />
-            </td>
+            {showChampion && (
+              <td className="text-center">
+                <ChampionCell e={e} started={started} />
+              </td>
+            )}
+            {showScorer && (
+              <td className="text-center">
+                <ScorerCell e={e} started={started} />
+              </td>
+            )}
             <td className="text-center">{e.total_points}</td>
             <td className="text-center">{e.exact_scores_count}</td>
           </tr>

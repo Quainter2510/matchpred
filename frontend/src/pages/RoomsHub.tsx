@@ -102,7 +102,14 @@ export default function RoomsHub() {
   const [newName, setNewName] = useState("");
   const [newPwd, setNewPwd] = useState("");
   const create = useMutation({
-    mutationFn: () => api.createRoom(newName, newPwd),
+    // Быстрое создание из лобби — тип ЧМ по умолчанию. Полная панель создания
+    // турниров (РПЛ/ЛЧ, длительность, сезон) — в /admin.
+    mutationFn: () =>
+      api.createTournament({
+        name: newName,
+        password: newPwd,
+        tournament_type: "world_cup",
+      }),
     onSuccess: (room) => {
       setNewName("");
       setNewPwd("");
