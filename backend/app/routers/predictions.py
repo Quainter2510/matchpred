@@ -21,7 +21,7 @@ from app.schemas.prediction import (
 from app.services.predictions import admin_set_prediction, set_prediction
 from app.services.recalc import room_multipliers_map, score_match
 from app.services.simulation import SimContext, effective_result, get_sim, points_for
-from app.services.tournament import match_belongs, tournament_match_conditions
+from app.services.tournament import tournament_match_conditions
 
 router = APIRouter(prefix="/rooms/{room_id}/predictions", tags=["predictions"])
 
@@ -35,18 +35,23 @@ async def batch(
     if not ctx.room.is_active:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Room is archived")
     match_ids = [p.match_id for p in payload.predictions]
+    # Скоуп турнира: матчи вне пула турнира просто не попадут в словарь →
+    # прогноз на них отклоняется как match_not_found.
     matches = {
         m.id: m
         for m in (
-            await db.execute(select(Match).where(Match.id.in_(match_ids)))
+            await db.execute(
+                select(Match).where(
+                    Match.id.in_(match_ids), *tournament_match_conditions(ctx.room)
+                )
+            )
         ).scalars().all()
     }
 
     results: list[PredictionResult] = []
     for item in payload.predictions:
         match = matches.get(item.match_id)
-        # Матч должен входить в этот турнир — иначе прогноз на чужую лигу.
-        if not match or not match_belongs(ctx.room, match):
+        if not match:
             results.append(PredictionResult(match_id=item.match_id, accepted=False, reason="match_not_found"))
             continue
         accepted, reason = await set_prediction(
@@ -72,8 +77,10 @@ async def admin_set_user_prediction(
     if not ctx.is_superadmin:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Superadmin access required")
 
-    match = await db.get(Match, match_id)
-    if not match or not match_belongs(ctx.room, match):
+    match = await db.scalar(
+        select(Match).where(Match.id == match_id, *tournament_match_conditions(ctx.room))
+    )
+    if not match:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Match not found")
     member = await db.get(RoomMember, (ctx.room.id, user_id))
     if not member:

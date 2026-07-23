@@ -161,6 +161,8 @@ function defaultRules(
   ];
   if (specialKind === "leader") {
     lines.push(`• лидер лиги на финальный момент — ${s.points_champion}`);
+  } else if (specialKind === "stage_or_champion") {
+    lines.push(`• победитель / чемпион — ${s.points_champion}`);
   } else if (specialKind === "wc" || specialKind === undefined) {
     lines.push(`• чемпион турнира — ${s.points_champion}`);
     lines.push(`• лучший бомбардир — ${s.points_scorer}`);
@@ -302,7 +304,14 @@ export default function Tournament() {
         {([
           ["table", "Таблица"],
           ["predictions", "Прогнозы"],
-          ["wc", room.data?.tournament_type === "world_cup" ? "ЧМ-2026" : "Положение"],
+          [
+            "wc",
+            room.data?.tournament_type === "world_cup"
+              ? "ЧМ-2026"
+              : room.data?.tournament_type === "custom"
+                ? "Матчи"
+                : "Положение",
+          ],
         ] as const).map(([id, label]) => (
           <button
             key={id}

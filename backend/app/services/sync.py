@@ -12,15 +12,17 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Match, Room
+from app.models import Match, Room, TournamentMatch
 from app.services import audit, football_api
 from app.services.recalc import rescore_match
 from app.services.tournament import WORLD_CUP_LEAGUE_ID
 
 
 async def active_league_seasons(db: AsyncSession) -> list[tuple[int, int]]:
-    """Различные (league_id, season) активных турниров. Custom (league_id NULL)
-    сюда не попадает: его матчи выбирает админ вручную (фаза 3)."""
+    """Различные (league_id, season) для синка: лиговые турниры + лиги/сезоны
+    матчей, выбранных в активные кастомные турниры (чтобы их результаты тоже
+    подтягивались)."""
+    result: set[tuple[int, int]] = set()
     rows = (
         await db.execute(
             select(Room.league_id, Room.season)
@@ -32,7 +34,33 @@ async def active_league_seasons(db: AsyncSession) -> list[tuple[int, int]]:
             .distinct()
         )
     ).all()
-    return [(lid, season) for lid, season in rows]
+    result.update((lid, season) for lid, season in rows)
+
+    # Custom: лиги/сезоны выбранных матчей активных кастомных турниров.
+    custom_rows = (
+        await db.execute(
+            select(Match.league_id, Match.season)
+            .select_from(TournamentMatch)
+            .join(Match, Match.id == TournamentMatch.match_id)
+            .join(Room, Room.id == TournamentMatch.room_id)
+            .where(
+                Room.is_active.is_(True),
+                Room.tournament_type == "custom",
+                Match.league_id.is_not(None),
+                Match.season.is_not(None),
+            )
+            .distinct()
+        )
+    ).all()
+    result.update((lid, season) for lid, season in custom_rows)
+    return list(result)
+
+
+async def sync_league(db: AsyncSession, league_id: int, season: int) -> dict:
+    """Синхронизировать одну лигу/сезон (для панели выбора матчей кастомного
+    турнира — подтянуть фикстуры до выбора). Не коммитит."""
+    fixtures = await football_api.fetch_fixtures(league_id, season, with_groups=False)
+    return await apply_fixtures(db, fixtures)
 
 
 async def fetch_and_apply_all(db: AsyncSession, *, with_groups: bool = True) -> dict:

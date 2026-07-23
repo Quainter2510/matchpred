@@ -41,6 +41,11 @@ export interface TournamentRound {
   match_count: number;
 }
 
+export interface CustomLeague {
+  id: number;
+  label: string;
+}
+
 export interface RoomScoring {
   points_exact: number;
   points_diff: number;
@@ -338,6 +343,29 @@ export const api = {
     client
       .get<TournamentRound[]>("/rooms/available-rounds", { params: { type, season } })
       .then((x) => x.data),
+  // ---- custom tournament match selection ----
+  customLeagues: () =>
+    client.get<CustomLeague[]>("/rooms/custom-leagues").then((x) => x.data),
+  syncLeague: (league_id: number, season: number) =>
+    client.post("/admin/sync-league", { league_id, season }).then((x) => x.data),
+  customCandidates: (
+    roomId: string,
+    league_id: number,
+    season: number,
+    start?: string,
+    end?: string
+  ) =>
+    client
+      .get<Match[]>(`${r(roomId)}/custom-candidates`, {
+        params: { league_id, season, start, end },
+      })
+      .then((x) => x.data),
+  customMatches: (roomId: string) =>
+    client.get<Match[]>(`${r(roomId)}/custom-matches`).then((x) => x.data),
+  addCustomMatch: (roomId: string, match_id: string) =>
+    client.post(`${r(roomId)}/custom-matches`, { match_id }).then((x) => x.data),
+  removeCustomMatch: (roomId: string, match_id: string) =>
+    client.delete(`${r(roomId)}/custom-matches/${match_id}`).then((x) => x.data),
   joinRoom: (roomId: string, password: string) =>
     client.post<Room>(`${r(roomId)}/join`, { password }).then((x) => x.data),
   roomDetail: (roomId: string) =>

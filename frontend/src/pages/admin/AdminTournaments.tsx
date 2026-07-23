@@ -17,8 +17,8 @@ const DEFAULT_SCORING: RoomScoring = {
   points_scorer: 10,
 };
 
-// Тип custom (топ-5 + РПЛ + ЛЧ) появится в фазе 3 — пока скрыт.
-const HIDDEN_TYPES: TournamentType[] = ["custom"];
+// Все типы доступны для создания.
+const HIDDEN_TYPES: TournamentType[] = [];
 
 export default function AdminTournaments() {
   const qc = useQueryClient();
@@ -241,15 +241,20 @@ export default function AdminTournaments() {
               ["points_exact", "Точный счёт"],
               ["points_diff", "Разница"],
               ["points_outcome", "Исход"],
-              ["points_champion", typeInfo?.special_kind === "leader" ? "Лидер лиги" : "Чемпион"],
+              [
+                "points_champion",
+                typeInfo?.special_kind === "leader" ? "Лидер лиги" : "Победитель / чемпион",
+              ],
               ["points_scorer", "Бомбардир"],
             ] as [keyof RoomScoring, string][]
           )
-            .filter(
-              // Бомбардир — только у ЧМ; у лидера лиги отдельного бомбардира нет.
-              ([key]) =>
-                key !== "points_scorer" || typeInfo?.special_kind === "wc"
-            )
+            .filter(([key]) => {
+              // Бомбардир — только у ЧМ; спецочки за команду — не у custom.
+              if (key === "points_scorer") return typeInfo?.special_kind === "wc";
+              if (key === "points_champion")
+                return typeInfo?.special_kind !== "none";
+              return true;
+            })
             .map(([key, label]) => (
               <label key={key} className="block">
                 <span className="mb-1 block text-xs text-slate-600">{label}</span>

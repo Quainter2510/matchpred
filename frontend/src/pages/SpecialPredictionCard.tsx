@@ -18,11 +18,15 @@ export default function SpecialPredictionCard({
     queryFn: () => api.mySpecial(roomId),
   });
 
-  // Список команд турнира — для спецпрогноза «лидер лиги» (селект вместо ввода).
+  // Командные спецпрогнозы (лидер лиги РПЛ / победитель или чемпион ЛЧ) —
+  // выбор одной команды.
+  const isTeamSpecial =
+    specialKind === "leader" || specialKind === "stage_or_champion";
+  // Список команд турнира — для селекта вместо ручного ввода.
   const standings = useQuery({
     queryKey: ["standings", roomId],
     queryFn: () => api.standings(roomId),
-    enabled: specialKind === "leader",
+    enabled: isTeamSpecial,
   });
   const teams = useMemo(() => {
     const rows = standings.data?.groups.flatMap((g) => g.teams) || [];
@@ -55,11 +59,15 @@ export default function SpecialPredictionCard({
     onSuccess: () => qc.invalidateQueries({ queryKey: ["special", roomId] }),
   });
 
-  // Типы без спецпрогноза (custom и пр.) — карточку не показываем.
-  if (specialKind === "none" || specialKind === "stage_or_champion") return null;
+  // Типы без спецпрогноза (custom) — карточку не показываем.
+  if (specialKind === "none") return null;
   if (isLoading) return null;
   const locked = data?.locked;
-  const isLeader = specialKind === "leader";
+  const isLeader = isTeamSpecial;
+  const teamLabel =
+    specialKind === "leader"
+      ? "Лидер лиги на финальный момент"
+      : "Победитель / чемпион";
 
   const championSaved = !!data?.champion_team && champion === data.champion_team;
   const scorerSaved =
@@ -82,7 +90,7 @@ export default function SpecialPredictionCard({
       )}
       <div>
         <label className="text-sm text-slate-600">
-          {isLeader ? "Лидер лиги на финальный момент" : "Чемпион турнира"}
+          {isLeader ? teamLabel : "Чемпион турнира"}
         </label>
         {locked ? (
           <div className="input flex items-center bg-slate-50">

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { api, RoomDetail, RoomScoring } from "../../api/endpoints";
+import { api, Match, RoomDetail, RoomScoring } from "../../api/endpoints";
 import { useAuth } from "../../store/auth";
 import { formatDate, formatTime } from "../../utils/dates";
 import TeamName from "../../components/TeamName";
@@ -18,6 +18,8 @@ function ruleFields(specialKind: string): { key: keyof RoomScoring; label: strin
   ];
   if (specialKind === "leader") {
     base.push({ key: "points_champion", label: "Лидер лиги" });
+  } else if (specialKind === "stage_or_champion") {
+    base.push({ key: "points_champion", label: "Победитель / чемпион" });
   } else if (specialKind === "wc") {
     base.push({ key: "points_champion", label: "Чемпион турнира" });
     base.push({ key: "points_scorer", label: "Лучший бомбардир" });
@@ -436,9 +438,15 @@ function ScorerResult({ roomId }: { roomId: string }) {
   );
 }
 
-// Итоговый лидер лиги (спецпрогноз типа `leader`, напр. РПЛ) — начисляет очки
-// вручную, аналогично бомбардиру, но по команде-победителю.
-function LeaderResult({ roomId }: { roomId: string }) {
+// Итоговый командный спецпрогноз (лидер лиги РПЛ / победитель или чемпион ЛЧ) —
+// начисляет очки вручную по команде-победителю.
+function LeaderResult({
+  roomId,
+  specialKind,
+}: {
+  roomId: string;
+  specialKind: string;
+}) {
   const qc = useQueryClient();
   const standings = useQuery({
     queryKey: ["standings", roomId],
@@ -448,6 +456,7 @@ function LeaderResult({ roomId }: { roomId: string }) {
     new Set((standings.data?.groups.flatMap((g) => g.teams) || []).map((t) => t.team))
   ).sort((a, b) => a.localeCompare(b, "ru"));
   const [team, setTeam] = useState("");
+  const isLeader = specialKind === "leader";
 
   const award = useMutation({
     mutationFn: () => api.leaderResult(roomId, team),
@@ -460,10 +469,12 @@ function LeaderResult({ roomId }: { roomId: string }) {
 
   return (
     <section className="card max-w-lg space-y-3">
-      <h2 className="text-lg font-semibold">Итоговый лидер лиги</h2>
+      <h2 className="text-lg font-semibold">
+        {isLeader ? "Итоговый лидер лиги" : "Итоговый победитель / чемпион"}
+      </h2>
       <p className="text-sm text-slate-500">
-        Укажите команду-лидера на финальный момент и начислите очки всем, кто её
-        угадал — только в этом соревновании.
+        Укажите команду-победителя и начислите очки всем, кто её угадал — только
+        в этом соревновании.
       </p>
       {teams.length > 0 ? (
         <select className="input" value={team} onChange={(e) => setTeam(e.target.value)}>
@@ -493,6 +504,179 @@ function LeaderResult({ roomId }: { roomId: string }) {
   );
 }
 
+// Выбор матчей для кастомного турнира: админ выбирает лигу → грузит матчи
+// недели (с синхронизацией из API) → отмечает нужные.
+function CustomMatchPicker({ roomId }: { roomId: string }) {
+  const qc = useQueryClient();
+  const today = new Date();
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  const plus = (days: number) => {
+    const d = new Date(today);
+    d.setDate(d.getDate() + days);
+    return iso(d);
+  };
+
+  const leagues = useQuery({ queryKey: ["custom-leagues"], queryFn: api.customLeagues });
+  const [leagueId, setLeagueId] = useState<number | null>(null);
+  const [season, setSeason] = useState<number>(today.getFullYear());
+  const [start, setStart] = useState<string>(iso(today));
+  const [end, setEnd] = useState<string>(plus(10));
+
+  const selected = useQuery({
+    queryKey: ["custom-matches", roomId],
+    queryFn: () => api.customMatches(roomId),
+  });
+  const selectedIds = new Set((selected.data || []).map((m) => m.id));
+
+  const [candidates, setCandidates] = useState<Match[] | null>(null);
+  const load = useMutation({
+    mutationFn: async () => {
+      if (!leagueId) throw new Error("Выберите лигу");
+      // Подтягиваем фикстуры лиги (superadmin); для не-суперадмина игнорируем
+      // ошибку доступа и показываем уже загруженные матчи.
+      try {
+        await api.syncLeague(leagueId, season);
+      } catch {
+        /* best-effort */
+      }
+      return api.customCandidates(roomId, leagueId, season, start, end);
+    },
+    onSuccess: (data) => setCandidates(data),
+    onError: (e: any) => alert(e.response?.data?.detail || e.message || "Ошибка"),
+  });
+
+  const add = useMutation({
+    mutationFn: (id: string) => api.addCustomMatch(roomId, id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["custom-matches", roomId] }),
+    onError: (e: any) => alert(e.response?.data?.detail || "Ошибка"),
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => api.removeCustomMatch(roomId, id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["custom-matches", roomId] });
+      qc.invalidateQueries();
+    },
+    onError: (e: any) => alert(e.response?.data?.detail || "Ошибка"),
+  });
+
+  const row = (m: Match, inTournament: boolean) => (
+    <div
+      key={m.id}
+      className="flex items-center justify-between gap-2 border-b py-1.5 text-sm last:border-b-0"
+    >
+      <span className="min-w-0">
+        <span className="text-xs text-slate-500">
+          {formatDate(m.kickoff_at)} {formatTime(m.kickoff_at)} ·{" "}
+        </span>
+        <TeamName team={m.home_team} /> <span className="text-slate-400">—</span>{" "}
+        <TeamName team={m.away_team} />
+      </span>
+      {inTournament ? (
+        <button
+          className="shrink-0 text-xs text-red-600 hover:underline"
+          onClick={() => remove.mutate(m.id)}
+        >
+          Убрать
+        </button>
+      ) : (
+        <button
+          className="shrink-0 text-xs text-brand hover:underline disabled:text-slate-300"
+          disabled={selectedIds.has(m.id) || add.isPending}
+          onClick={() => add.mutate(m.id)}
+        >
+          {selectedIds.has(m.id) ? "В турнире" : "Добавить"}
+        </button>
+      )}
+    </div>
+  );
+
+  return (
+    <section className="card space-y-3">
+      <h2 className="text-lg font-semibold">Матчи турнира</h2>
+      <p className="text-sm text-slate-500">
+        Выберите лигу и период, загрузите матчи и добавьте нужные. Кастомный
+        турнир состоит только из выбранных вами матчей.
+      </p>
+
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="block">
+          <span className="mb-1 block text-xs text-slate-600">Лига</span>
+          <select
+            className="input w-auto"
+            value={leagueId ?? ""}
+            onChange={(e) => setLeagueId(e.target.value ? Number(e.target.value) : null)}
+          >
+            <option value="">— выберите —</option>
+            {(leagues.data || []).map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs text-slate-600">Сезон</span>
+          <input
+            type="number"
+            className="input w-24"
+            value={season}
+            onChange={(e) => setSeason(Number(e.target.value) || today.getFullYear())}
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs text-slate-600">С</span>
+          <input
+            type="date"
+            className="input w-auto"
+            value={start}
+            onChange={(e) => setStart(e.target.value)}
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs text-slate-600">По</span>
+          <input
+            type="date"
+            className="input w-auto"
+            value={end}
+            onChange={(e) => setEnd(e.target.value)}
+          />
+        </label>
+        <button
+          className="btn-primary"
+          disabled={!leagueId || load.isPending}
+          onClick={() => load.mutate()}
+        >
+          {load.isPending ? "Загрузка…" : "Загрузить матчи"}
+        </button>
+      </div>
+
+      {(selected.data?.length ?? 0) > 0 && (
+        <div>
+          <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            В турнире ({selected.data!.length})
+          </div>
+          {selected.data!.map((m) => row(m, true))}
+        </div>
+      )}
+
+      {candidates && (
+        <div>
+          <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            Матчи лиги за период
+          </div>
+          {candidates.length === 0 ? (
+            <p className="text-sm text-slate-500">
+              Матчей не найдено. Проверьте лигу, сезон и период.
+            </p>
+          ) : (
+            candidates.map((m) => row(m, false))
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function RoomAdmin() {
   const { roomId } = useParams<{ roomId: string }>();
   const isSuper = useAuth((s) => s.isSuperadmin());
@@ -516,10 +700,17 @@ export default function RoomAdmin() {
         </h1>
       </div>
       <Members roomId={roomId!} />
+      {/* Кастомный турнир: ручной выбор матчей. */}
+      {room.data?.tournament_type === "custom" && (
+        <CustomMatchPicker roomId={roomId!} />
+      )}
       <Multipliers roomId={roomId!} />
       {/* Итоговый результат спецпрогноза — по типу турнира. */}
       {room.data?.special_kind === "wc" && <ScorerResult roomId={roomId!} />}
-      {room.data?.special_kind === "leader" && <LeaderResult roomId={roomId!} />}
+      {(room.data?.special_kind === "leader" ||
+        room.data?.special_kind === "stage_or_champion") && (
+        <LeaderResult roomId={roomId!} specialKind={room.data.special_kind} />
+      )}
       <RoomPassword roomId={roomId!} />
       {room.data && <RulesText room={room.data} />}
       {isSuper && room.data && <ScoringRules room={room.data} />}

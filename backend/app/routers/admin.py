@@ -12,10 +12,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.dependencies import require_superadmin
 from app.models import AuditLog, User
-from app.schemas.admin import AuditLogOut, TransferRequest
+from app.schemas.admin import AuditLogOut, SyncLeagueRequest, TransferRequest
 from app.services import audit
 from app.services.recalc import recalculate_all
-from app.services.sync import fetch_and_apply_all
+from app.services.sync import fetch_and_apply_all, sync_league
 from app.services.top_scorers import refresh_top_scorers
 
 router = APIRouter(tags=["admin"])
@@ -74,6 +74,31 @@ async def sync_api(
     except Exception:
         scorers = 0
     return {**stats, **summary, "top_scorers": scorers}
+
+
+@router.post("/admin/sync-league")
+async def sync_league_endpoint(
+    payload: SyncLeagueRequest,
+    user: User = Depends(require_superadmin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Синхронизировать одну лигу/сезон в БД — для панели выбора матчей
+    кастомного турнира (подтянуть фикстуры до выбора)."""
+    try:
+        stats = await sync_league(db, payload.league_id, payload.season)
+    except Exception as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"API-Football error: {exc}")
+    await audit.log_event(
+        db,
+        "api_sync",
+        actor_id=user.id,
+        actor_nickname=user.nickname,
+        details={**stats, "league_id": payload.league_id, "season": payload.season},
+    )
+    await db.commit()
+    summary = await recalculate_all(db)
+    await db.commit()
+    return {**stats, **summary}
 
 
 @router.post("/admin/recalculate")

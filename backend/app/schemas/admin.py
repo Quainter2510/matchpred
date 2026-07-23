@@ -8,6 +8,11 @@ class TransferRequest(BaseModel):
     target_user_id: uuid.UUID
 
 
+class SyncLeagueRequest(BaseModel):
+    league_id: int
+    season: int
+
+
 class AuditLogOut(BaseModel):
     id: int
     created_at: datetime

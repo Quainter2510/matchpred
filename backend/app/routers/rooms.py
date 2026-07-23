@@ -1,4 +1,5 @@
 import uuid
+from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import delete, func, select
@@ -20,10 +21,14 @@ from app.models import (
     Room,
     RoomMember,
     SpecialPrediction,
+    TournamentMatch,
     User,
 )
 from app.redis_client import invalidate_leaderboard_cache
+from app.schemas.match import MatchOut
 from app.schemas.room import (
+    CustomLeagueOut,
+    CustomMatchAdd,
     ParticipationUpdate,
     RoomArchiveUpdate,
     RoomCreate,
@@ -40,7 +45,7 @@ from app.schemas.room import (
 )
 from app.security import hash_password, verify_password
 from app.services import audit, football_api
-from app.services.tournament import TYPE_CONFIG
+from app.services.tournament import CUSTOM_LEAGUES, TYPE_CONFIG
 
 router = APIRouter(prefix="/rooms", tags=["rooms"])
 
@@ -119,6 +124,12 @@ async def tournament_types(user: User = Depends(require_superadmin)):
     ]
 
 
+@router.get("/custom-leagues", response_model=list[CustomLeagueOut])
+async def custom_leagues(user: User = Depends(require_superadmin)):
+    """Лиги, доступные для выбора матчей в кастомном турнире (топ-5+РПЛ+ЛЧ)."""
+    return [CustomLeagueOut(id=lid, label=label) for lid, label in CUSTOM_LEAGUES]
+
+
 @router.get("/available-rounds", response_model=list[RoundOut])
 async def available_rounds(
     type: str,
@@ -171,6 +182,11 @@ async def create_room(
         if payload.ends_on is not None:
             stmt = stmt.where(Match.match_date <= payload.ends_on)
         first_match_at = await db.scalar(stmt)
+    # Custom: матчи выбираются позже вручную; дедлайна спецпрогноза нет
+    # (special_kind='none'). Ставим плейсхолдер, пересчитываемый при добавлении
+    # матчей (см. _recompute_first_match_at).
+    if first_match_at is None and payload.tournament_type == "custom":
+        first_match_at = datetime(2100, 1, 1, tzinfo=timezone.utc)
     if first_match_at is None:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
@@ -536,4 +552,117 @@ async def change_room_password(
         target_id=ctx.room.id,
     )
     await db.commit()
+    return {"ok": True}
+
+
+# ---------------- Custom tournament: match selection (room admin) ----------------
+_FAR_FUTURE = datetime(2100, 1, 1, tzinfo=timezone.utc)
+
+
+async def _recompute_first_match_at(db: AsyncSession, room: Room) -> None:
+    """Дедлайн/старт кастомного турнира = первый матч из выбранных (плейсхолдер,
+    если матчей ещё нет)."""
+    earliest = await db.scalar(
+        select(func.min(Match.kickoff_at))
+        .select_from(TournamentMatch)
+        .join(Match, Match.id == TournamentMatch.match_id)
+        .where(TournamentMatch.room_id == room.id)
+    )
+    room.first_match_at = earliest or _FAR_FUTURE
+
+
+@router.get("/{room_id}/custom-candidates", response_model=list[MatchOut])
+async def custom_candidates(
+    league_id: int,
+    season: int,
+    start: date | None = None,
+    end: date | None = None,
+    ctx: RoomContext = Depends(require_room_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Матчи лиги/сезона в окне дат — кандидаты для добавления в кастомный
+    турнир. Матчи должны быть предварительно синхронизированы (POST
+    /admin/sync-league)."""
+    if ctx.room.tournament_type != "custom":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Только для кастомного турнира")
+    stmt = (
+        select(Match)
+        .where(Match.league_id == league_id, Match.season == season)
+        .order_by(Match.kickoff_at)
+    )
+    if start is not None:
+        stmt = stmt.where(Match.match_date >= start)
+    if end is not None:
+        stmt = stmt.where(Match.match_date <= end)
+    matches = (await db.execute(stmt)).scalars().all()
+    return [MatchOut.model_validate(m) for m in matches]
+
+
+@router.get("/{room_id}/custom-matches", response_model=list[MatchOut])
+async def custom_matches(
+    ctx: RoomContext = Depends(require_room_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Матчи, уже включённые в кастомный турнир."""
+    matches = (
+        await db.execute(
+            select(Match)
+            .join(TournamentMatch, TournamentMatch.match_id == Match.id)
+            .where(TournamentMatch.room_id == ctx.room.id)
+            .order_by(Match.kickoff_at)
+        )
+    ).scalars().all()
+    return [MatchOut.model_validate(m) for m in matches]
+
+
+@router.post("/{room_id}/custom-matches")
+async def add_custom_match(
+    payload: CustomMatchAdd,
+    ctx: RoomContext = Depends(require_room_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    if ctx.room.tournament_type != "custom":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Только для кастомного турнира")
+    match = await db.get(Match, payload.match_id)
+    if not match:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Match not found")
+    existing = await db.get(TournamentMatch, (ctx.room.id, match.id))
+    if not existing:
+        db.add(TournamentMatch(room_id=ctx.room.id, match_id=match.id))
+        await _recompute_first_match_at(db, ctx.room)
+    await db.commit()
+    return {"ok": True}
+
+
+@router.delete("/{room_id}/custom-matches/{match_id}")
+async def remove_custom_match(
+    match_id: uuid.UUID,
+    ctx: RoomContext = Depends(require_room_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    if ctx.room.tournament_type != "custom":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Только для кастомного турнира")
+    row = await db.get(TournamentMatch, (ctx.room.id, match_id))
+    if row:
+        await db.delete(row)
+    # Удаляем прогнозы этого матча в комнате; уже начисленные очки снимаем с
+    # участников — иначе останутся «осиротевшие» очки за исключённый матч.
+    preds = (
+        await db.execute(
+            select(Prediction).where(
+                Prediction.room_id == ctx.room.id, Prediction.match_id == match_id
+            )
+        )
+    ).scalars().all()
+    for p in preds:
+        if p.points_awarded is not None:
+            member = await db.get(RoomMember, (ctx.room.id, p.user_id))
+            if member:
+                member.total_points -= p.points_awarded or 0
+                if p.is_exact:
+                    member.exact_scores_count -= 1
+        await db.delete(p)
+    await _recompute_first_match_at(db, ctx.room)
+    await db.commit()
+    await invalidate_leaderboard_cache(ctx.room.id)
     return {"ok": True}

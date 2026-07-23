@@ -43,7 +43,6 @@ from app.services.recalc import (
 from app.services.simulation import SimContext, effective_result, get_sim, points_for
 from app.services.tournament import (
     league_tour_anchor,
-    match_belongs,
     tournament_match_conditions,
     type_config,
 )
@@ -84,10 +83,15 @@ async def _room_match_mult(
 async def _get_tournament_match(
     db: AsyncSession, room: Room, match_id: uuid.UUID
 ) -> Match:
-    """Матч по id с проверкой, что он входит в этот турнир — иначе участник мог
-    бы прочитать матч чужой лиги по id. 404, если матча нет или он не входит."""
-    match = await db.get(Match, match_id)
-    if not match or not match_belongs(room, match):
+    """Матч по id со скоупом турнира — иначе участник мог бы прочитать матч
+    чужой лиги/турнира по id. Единая точка через tournament_match_conditions
+    (работает и для custom с явным набором). 404, если матча нет в турнире."""
+    match = await db.scalar(
+        select(Match).where(
+            Match.id == match_id, *tournament_match_conditions(room)
+        )
+    )
+    if not match:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Match not found")
     return match
 

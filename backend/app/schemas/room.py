@@ -63,6 +63,15 @@ class TournamentTypeOut(BaseModel):
     needs_season: bool  # требуется ли выбор сезона при создании
 
 
+class CustomLeagueOut(BaseModel):
+    id: int
+    label: str
+
+
+class CustomMatchAdd(BaseModel):
+    match_id: uuid.UUID
+
+
 class RoundOut(BaseModel):
     """Тур реальной лиги с датами — для выбора длительности «с тура по тур»."""
 

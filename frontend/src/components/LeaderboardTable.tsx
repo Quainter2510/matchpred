@@ -77,10 +77,13 @@ export default function LeaderboardTable({
   const showParticipation = !started;
   // Столбцы спецпрогноза зависят от типа: ЧМ — чемпион+бомбардир; лидер лиги —
   // только «лидер»; без спецпрогноза — ничего.
-  const showChampion = specialKind === "wc" || specialKind === "leader";
+  const showChampion =
+    specialKind === "wc" ||
+    specialKind === "leader" ||
+    specialKind === "stage_or_champion";
   const showScorer = specialKind === "wc";
-  const championTitle = specialKind === "leader" ? "Лидер лиги" : "Чемпион";
-  const championIcon = specialKind === "leader" ? "🥇" : "🏆";
+  const championTitle = specialKind === "leader" ? "Лидер лиги" : "Победитель";
+  const championIcon = specialKind === "wc" ? "🏆" : "🥇";
 
   if (!entries.length)
     return <div className="text-slate-500">Пока нет участников.</div>;

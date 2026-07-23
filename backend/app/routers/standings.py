@@ -51,6 +51,15 @@ def _blank_stats() -> dict:
 # Типы турниров, положение которых — одна лиговая таблица (без групп/плей-офф).
 SINGLE_TABLE_TYPES = {"rpl"}
 
+# Стадии плей-офф (для ЛЧ): всё, что не общий/групповой этап.
+KNOCKOUT_RE = re.compile(
+    r"final|semi|quarter|round[_\s]?of|knockout|play[-_\s]?off|1/\d", re.I
+)
+
+
+def _is_knockout(stage: str | None) -> bool:
+    return bool(KNOCKOUT_RE.search(stage or ""))
+
 
 def _apply_match_to_stats(teams: dict, home_team, away_team, home, away) -> None:
     """Учесть завершённый матч в статистике команд (очки 3/1/0, забитые)."""
@@ -119,6 +128,46 @@ async def _single_table_standings(
     )
 
 
+async def _ucl_standings(
+    ctx: RoomContext, sim: SimContext, matches: list[Match]
+) -> StandingsOut:
+    """Положение ЛЧ нового формата: единая «швейцарская» таблица общего этапа +
+    сетка плей-офф по стадиям. Матчи общего этапа (не плей-офф) идут в таблицу,
+    стадии плей-офф — в порядке первого матча."""
+    teams: dict[str, dict] = {}
+    league_matches: list[StandingsMatch] = []
+    playoff: dict[str, list[StandingsMatch]] = {}
+    for m in matches:
+        status, home, away = effective_result(m, sim)
+        brief = StandingsMatch(
+            id=m.id,
+            home_team=m.home_team,
+            away_team=m.away_team,
+            home_score=home,
+            away_score=away,
+            status=status,
+            kickoff_at=m.kickoff_at,
+        )
+        if _is_knockout(m.stage):
+            playoff.setdefault(m.stage, []).append(brief)
+            continue
+        league_matches.append(brief)
+        teams.setdefault(m.home_team, _blank_stats())
+        teams.setdefault(m.away_team, _blank_stats())
+        if status == "finished" and home is not None and away is not None:
+            _apply_match_to_stats(teams, m.home_team, m.away_team, home, away)
+
+    groups = (
+        [GroupStanding(name="Общий этап", teams=_ranked_rows(teams), matches=league_matches)]
+        if teams
+        else []
+    )
+    playoff_out = [
+        PlayoffStage(stage=stage, matches=items) for stage, items in playoff.items()
+    ]
+    return StandingsOut(groups=groups, playoff=playoff_out)
+
+
 @router.get("", response_model=StandingsOut)
 async def standings(
     ctx: RoomContext = Depends(require_room_member),
@@ -135,6 +184,29 @@ async def standings(
 
     if ctx.room.tournament_type in SINGLE_TABLE_TYPES:
         return await _single_table_standings(ctx, sim, matches)
+    if ctx.room.tournament_type == "ucl":
+        return await _ucl_standings(ctx, sim, matches)
+    if ctx.room.tournament_type == "custom":
+        # Кастом: без турнирной таблицы (матчи из разных лиг) — просто список
+        # выбранных матчей с результатами (для ленты и вкладки «Матчи»).
+        briefs = []
+        for m in matches:
+            status, home, away = effective_result(m, sim)
+            briefs.append(
+                StandingsMatch(
+                    id=m.id,
+                    home_team=m.home_team,
+                    away_team=m.away_team,
+                    home_score=home,
+                    away_score=away,
+                    status=status,
+                    kickoff_at=m.kickoff_at,
+                )
+            )
+        return StandingsOut(
+            groups=[],
+            playoff=[PlayoffStage(stage="Матчи", matches=briefs)] if briefs else [],
+        )
 
     groups: dict[str, dict] = {}  # буква -> {"teams": {...}, "matches": [...]}
     playoff: dict[str, list[StandingsMatch]] = {}  # код стадии -> матчи

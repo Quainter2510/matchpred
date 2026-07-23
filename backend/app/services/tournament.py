@@ -11,16 +11,35 @@
 """
 from __future__ import annotations
 
-from sqlalchemy import false
+from sqlalchemy import false, select
 
-from app.models import Match, Room
+from app.models import Match, Room, TournamentMatch
 
 # ---- ID лиг в API-Football ----
 WORLD_CUP_LEAGUE_ID = 1
 RPL_LEAGUE_ID = 235
 UCL_LEAGUE_ID = 2
 
+# Топ-5 европейских лиг.
+EPL_LEAGUE_ID = 39
+LALIGA_LEAGUE_ID = 140
+SERIEA_LEAGUE_ID = 135
+BUNDESLIGA_LEAGUE_ID = 78
+LIGUE1_LEAGUE_ID = 61
+
+# Лиги, доступные для выбора матчей в кастомном турнире (топ-5 + РПЛ + ЛЧ).
+CUSTOM_LEAGUES: list[tuple[int, str]] = [
+    (EPL_LEAGUE_ID, "Англия — АПЛ"),
+    (LALIGA_LEAGUE_ID, "Испания — Ла Лига"),
+    (SERIEA_LEAGUE_ID, "Италия — Серия A"),
+    (BUNDESLIGA_LEAGUE_ID, "Германия — Бундеслига"),
+    (LIGUE1_LEAGUE_ID, "Франция — Лига 1"),
+    (RPL_LEAGUE_ID, "Россия — РПЛ"),
+    (UCL_LEAGUE_ID, "Лига чемпионов"),
+]
+
 # Дни недели-якоря для недельной группировки туров (Пн=0…Вс=6).
+_TUE = 1
 _WED = 2
 _SAT = 5
 
@@ -72,6 +91,13 @@ _LEAGUE_TOUR_ANCHOR: dict[int, int | None] = {
     WORLD_CUP_LEAGUE_ID: None,  # суточная (ЧМ)
     RPL_LEAGUE_ID: _WED,
     UCL_LEAGUE_ID: _SAT,
+    # Топ-5 — недельная группировка (для кастомных турниров), якорь вторник:
+    # матчвик Вт→Пн покрывает уик-энд + понедельник одним туром.
+    EPL_LEAGUE_ID: _TUE,
+    LALIGA_LEAGUE_ID: _TUE,
+    SERIEA_LEAGUE_ID: _TUE,
+    BUNDESLIGA_LEAGUE_ID: _TUE,
+    LIGUE1_LEAGUE_ID: _TUE,
 }
 
 
@@ -86,10 +112,17 @@ def tournament_match_conditions(room: Room) -> list:
 
     Применять как ``select(Match).where(*tournament_match_conditions(room))``
     (или после join к Match). Лиговые типы: лига+сезон (+окно дат по `match_date`,
-    где match_date — метка тура). Custom (join-таблица) — фаза 3; пока не
-    создаётся, поэтому без league_id отдаём ложное условие (пустой набор),
-    чтобы случайно не раскрыть все матчи.
+    где match_date — метка тура). Custom — явный набор матчей из join-таблицы
+    `tournament_matches`.
     """
+    if room.tournament_type == "custom":
+        return [
+            Match.id.in_(
+                select(TournamentMatch.match_id).where(
+                    TournamentMatch.room_id == room.id
+                )
+            )
+        ]
     if room.league_id is None:
         return [false()]
     conds = [Match.league_id == room.league_id]

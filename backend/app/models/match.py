@@ -84,6 +84,29 @@ class RoomMatchMultiplier(Base):
     )
 
 
+class TournamentMatch(Base):
+    """Явный набор матчей кастомного турнира (тип custom): админ вручную
+    выбирает матчи из разных лиг. Для лиговых типов (ЧМ/РПЛ/ЛЧ) не используется —
+    там набор выводится по league_id/season/окну (см. services/tournament.py)."""
+
+    __tablename__ = "tournament_matches"
+    __table_args__ = (Index("ix_tournament_matches_match", "match_id"),)
+
+    room_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("rooms.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    match_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("matches.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    added_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
 class TeamMatch(Base):
     """Справочник матчей сборных за 2026 год во всех турнирах (форма команд
     на странице прогноза). Заполняется разово скриптом
