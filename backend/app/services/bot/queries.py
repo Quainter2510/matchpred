@@ -1,5 +1,5 @@
 """Read queries used by the bot core. Transport-agnostic."""
-from datetime import date
+from datetime import date, datetime
 
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -38,15 +38,18 @@ async def leaderboard(db: AsyncSession, room_id) -> list[tuple[str, int]]:
 
 
 async def days_with_matches(
-    db: AsyncSession, room: Room, start: date, end: date
+    db: AsyncSession, room: Room, start: datetime, end: datetime
 ) -> list[date]:
-    """Дни с матчами В ПРЕДЕЛАХ турнира комнаты (иначе смешались бы лиги)."""
+    """Даты туров (match_date) турнира, у которых есть матч с kickoff в окне
+    [start, end]. Окно берётся по `kickoff_at`, а не по `match_date`: у недельных
+    турниров match_date — начало недели (может быть на несколько дней раньше
+    «сегодня»), поэтому фильтр по самой дате тура терял бы текущий тур."""
     rows = (
         await db.execute(
             select(Match.match_date)
             .where(
-                Match.match_date >= start,
-                Match.match_date <= end,
+                Match.kickoff_at >= start,
+                Match.kickoff_at <= end,
                 *tournament_match_conditions(room),
             )
             .group_by(Match.match_date)

@@ -31,9 +31,34 @@ _FIG = "\u2007"
 def _rjust(s: str, width: int) -> str:
     return _FIG * max(0, width - len(s)) + s
 
-# Day windows (inclusive), relative to today (UTC).
-RESULTS_BACK, RESULTS_FWD = 3, 2
-PREDICT_BACK, PREDICT_FWD = 0, 5
+# Окна дней вокруг «сейчас» (UTC) для листинга туров. Для недельных турниров
+# (РПЛ/ЛЧ/custom) шире — тур длится неделю; для суточных (ЧМ) — узкие. Окно
+# применяется к kickoff матчей (queries.days_with_matches), поэтому недельный
+# тур попадает в выборку, даже если его match_date (начало недели) уже прошёл.
+_DAILY_RESULTS, _DAILY_PREDICT = (3, 2), (0, 5)
+_WEEKLY_RESULTS, _WEEKLY_PREDICT = (14, 3), (0, 16)
+
+
+def _is_weekly(room) -> bool:
+    return room.tour_anchor is not None
+
+
+# Короткая метка типа турнира для кнопок/заголовков бота.
+_TYPE_SHORT = {"world_cup": "ЧМ", "rpl": "РПЛ", "ucl": "ЛЧ", "custom": "Свой"}
+
+
+def _type_short(room) -> str:
+    return _TYPE_SHORT.get(room.tournament_type, "")
+
+
+def _window(room, *, results: bool) -> tuple[datetime, datetime]:
+    weekly = _is_weekly(room)
+    if results:
+        back, fwd = _WEEKLY_RESULTS if weekly else _DAILY_RESULTS
+    else:
+        back, fwd = _WEEKLY_PREDICT if weekly else _DAILY_PREDICT
+    now = datetime.now(timezone.utc)
+    return now - timedelta(days=back), now + timedelta(days=fwd)
 
 _MONTHS = [
     "", "января", "февраля", "марта", "апреля", "мая", "июня",
@@ -58,12 +83,16 @@ class Reply:
     buttons: list[list[Button]] = field(default_factory=list)
 
 
-def _today() -> "datetime.date":
-    return datetime.now(timezone.utc).date()
-
-
 def _fmt_day(d) -> str:
     return f"{d.day} {_MONTHS[d.month]} ({_WEEKDAYS[d.weekday()]})"
+
+
+def _fmt_tour(room, d) -> str:
+    """Подпись тура в кнопке/заголовке: для недельных турниров — «Тур с DD MMM»
+    (d = начало недели), для суточных — обычная дата дня."""
+    if _is_weekly(room):
+        return f"Тур с {d.day} {_MONTHS[d.month]}"
+    return _fmt_day(d)
 
 
 def _btn_menu() -> list[Button]:
@@ -175,7 +204,15 @@ async def _menu(
             await set_state(provider, ext_id, {})
             return Reply(
                 "Выберите соревнование:",
-                [[Button(r.name[:40], {"a": "menu", "rid": str(r.id)})] for r in rooms],
+                [
+                    [
+                        Button(
+                            f"{r.name[:32]} · {_type_short(r)}",
+                            {"a": "menu", "rid": str(r.id)},
+                        )
+                    ]
+                    for r in rooms
+                ],
             )
 
     await set_state(provider, ext_id, {"room_id": str(room.id)})  # reset any flow
@@ -186,7 +223,9 @@ async def _menu(
     ]
     if len(rooms) > 1:
         buttons.append([Button("🔄 Сменить соревнование", {"a": "switch"})])
-    return Reply(f"Соревнование: {room.name}\nВыберите действие:", buttons)
+    type_label = _type_short(room)
+    header = f"Соревнование: {room.name}" + (f" · {type_label}" if type_label else "")
+    return Reply(f"{header}\nВыберите действие:", buttons)
 
 
 # ---------------- table ----------------
@@ -209,8 +248,8 @@ async def _table(db: AsyncSession, provider: str, ext_id: str, user: User) -> Re
 
 
 # ---------------- tour results ----------------
-def _day_buttons(days, action: str) -> list[list[Button]]:
-    return [[Button(_fmt_day(d), {"a": action, "d": d.isoformat()})] for d in days]
+def _day_buttons(days, action: str, room) -> list[list[Button]]:
+    return [[Button(_fmt_tour(room, d), {"a": action, "d": d.isoformat()})] for d in days]
 
 
 async def _tour_days(db: AsyncSession, provider: str, ext_id: str, user: User) -> Reply:
@@ -218,13 +257,11 @@ async def _tour_days(db: AsyncSession, provider: str, ext_id: str, user: User) -
     room = await _current_room(db, user, state)
     if not room:
         return await _menu(db, provider, ext_id, user)
-    today = _today()
-    days = await queries.days_with_matches(
-        db, room, today - timedelta(days=RESULTS_BACK), today + timedelta(days=RESULTS_FWD)
-    )
+    start, end = _window(room, results=True)
+    days = await queries.days_with_matches(db, room, start, end)
     if not days:
         return Reply("В ближайшие дни нет матчей.", [_btn_menu()])
-    return Reply("Выберите тур (итоги):", _day_buttons(days, "tour_day") + [_btn_menu()])
+    return Reply("Выберите тур (итоги):", _day_buttons(days, "tour_day", room) + [_btn_menu()])
 
 
 async def _tour_results(
@@ -241,7 +278,7 @@ async def _tour_results(
     players = await queries.tour_player_points(db, room, day)
     matches = await queries.tour_matches_for_user(db, room, user.id, day)
 
-    lines = [f"📅 {_fmt_day(day)} — итоги ({room.name})", ""]
+    lines = [f"📅 {_fmt_tour(room, day)} — итоги ({room.name})", ""]
     if players:
         pts_w = max(len(str(p)) for _, p in players)
         for nick, pts in players[:50]:
@@ -269,14 +306,12 @@ async def _predict_days(db: AsyncSession, provider: str, ext_id: str, user: User
     room = await _current_room(db, user, state)
     if not room:
         return await _menu(db, provider, ext_id, user)
-    today = _today()
-    days = await queries.days_with_matches(
-        db, room, today - timedelta(days=PREDICT_BACK), today + timedelta(days=PREDICT_FWD)
-    )
+    start, end = _window(room, results=False)
+    days = await queries.days_with_matches(db, room, start, end)
     if not days:
         return Reply("Нет матчей для прогноза в ближайшие дни.", [_btn_menu()])
     return Reply(
-        "Выберите тур для прогноза:", _day_buttons(days, "predict_day") + [_btn_menu()]
+        "Выберите тур для прогноза:", _day_buttons(days, "predict_day", room) + [_btn_menu()]
     )
 
 
