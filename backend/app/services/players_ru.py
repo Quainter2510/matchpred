@@ -61,3 +61,22 @@ def ru_player(name: str | None) -> str | None:
     if full in _BY_FULL:
         return _BY_FULL[full]
     return _BY_SURNAME.get(_surname(name)) or None
+
+
+def search(query: str) -> list[dict]:
+    """Курируемые игроки РПЛ, подходящие под запрос (по русскому/латинскому
+    имени). Возвращает [{name_ru, latin}] — latin для резолва реального id
+    через API (работает и до старта сезона)."""
+    q = normalize_name(query.strip())
+    if not q:
+        return []
+    out: list[dict] = []
+    for ru, aliases in _PLAYERS:
+        hay = normalize_name(ru) + " " + " ".join(normalize_name(a) for a in aliases)
+        if q in hay:
+            # Короткий алиас — обычно голая фамилия; по ней резолв реального id
+            # надёжнее (resolve_player_id требует совпадения ВСЕХ токенов имени,
+            # а транслитерация имени часто расходится с API).
+            latin = min(aliases, key=len)
+            out.append({"name_ru": ru, "latin": latin})
+    return out

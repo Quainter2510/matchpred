@@ -20,10 +20,13 @@ from app.schemas.special import (
     SpecialPredictionPublic,
     SpecialPredictionUpdate,
 )
-from app.services import audit, football_api
+from app.redis_client import redis_client
+from app.services import audit, football_api, players_ru
+from app.services.players_catalog import normalize_name
 from app.services.players_ru import ru_player
 from app.services.recalc import score_leader, score_top_scorer
 from app.services.simulation import SimContext, get_sim
+from app.services.top_scorers import get_snapshot
 from app.services.tournament import special_deadline_at
 
 router = APIRouter(prefix="/rooms/{room_id}/special-prediction", tags=["special"])
@@ -209,26 +212,80 @@ async def leader_result(
     return {"awarded": awarded}
 
 
+_RPL_ID_KEY = "rpl_player_id:{}"
+
+
+async def _resolve_cached_id(latin: str) -> int | None:
+    """Реальный API-id игрока по латинскому имени с кэшем в Redis. Использует
+    /players/profiles (поиск по фамилии) — работает и до старта сезона, когда
+    составы/бомбардиры лиги ещё не загружены."""
+    key = _RPL_ID_KEY.format(normalize_name(latin))
+    try:
+        raw = await redis_client.get(key)
+        if raw:
+            return int(raw)
+    except Exception:
+        pass
+    try:
+        rid = await football_api.resolve_player_id(latin, None)
+    except Exception:
+        rid = None
+    if rid:
+        try:
+            await redis_client.set(key, str(rid))
+        except Exception:
+            pass
+    return rid
+
+
 @router.get("/scorer-search", response_model=list[PlayerSearchItem])
 async def scorer_search(
     q: str = Query(min_length=3),
     ctx: RoomContext = Depends(require_room_member),
 ):
-    """Поиск бомбардира с учётом турнира: для лиговых турниров (РПЛ) — только
-    футболисты клубов этой лиги, имена по-русски (курируемый словарь, фолбэк —
-    латиница). Для ЧМ — глобальный поиск с кураторским списком сборников."""
+    """Поиск бомбардира с учётом турнира. ЧМ — глобальный поиск (кураторский
+    список сборников). Лиговые турниры (РПЛ) — только игроки этой лиги, имена
+    по-русски: снимок бомбардиров лиги (когда есть) + курируемый список
+    `players_ru` с резолвом реального id (работает и до старта сезона)."""
     is_wc = ctx.room.special_kind == "wc"
     league_id, season = ctx.room.league_id, ctx.room.season
-    try:
-        if not is_wc and league_id and season:
-            results = await football_api.search_league_players(q, league_id, season)
-            for r in results:
-                r["name"] = ru_player(r["name"]) or r["name"]
-        else:
+
+    if is_wc or not league_id or not season:
+        try:
             results = await football_api.search_players(q)
-    except Exception:
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Player search unavailable")
-    return [PlayerSearchItem(**r) for r in results if r.get("api_id")]
+        except Exception:
+            raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Player search unavailable")
+        return [PlayerSearchItem(**r) for r in results if r.get("api_id")]
+
+    ql = normalize_name(q)
+    out: dict[int, dict] = {}
+
+    # 1) Снимок бомбардиров лиги (если уже есть голы/данные).
+    snap = await get_snapshot(league_id, season)
+    for s in (snap or {}).get("scorers", []):
+        name_ru = ru_player(s.get("name")) or s.get("name") or ""
+        if s.get("api_id") and (
+            ql in normalize_name(name_ru) or ql in normalize_name(s.get("name") or "")
+        ):
+            out[s["api_id"]] = {
+                "api_id": s["api_id"],
+                "name": name_ru,
+                "team": s.get("team"),
+                "photo": s.get("photo"),
+            }
+
+    # 2) Курируемые игроки РПЛ с резолвом реального id (доступно и до сезона).
+    for cand in players_ru.search(q):
+        rid = await _resolve_cached_id(cand["latin"])
+        if rid and rid not in out:
+            out[rid] = {
+                "api_id": rid,
+                "name": cand["name_ru"],
+                "team": None,
+                "photo": None,
+            }
+
+    return [PlayerSearchItem(**r) for r in out.values()][:20]
 
 
 @players_router.get("/players/search", response_model=list[PlayerSearchItem])

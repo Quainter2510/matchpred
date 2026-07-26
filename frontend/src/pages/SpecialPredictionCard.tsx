@@ -51,6 +51,7 @@ export default function SpecialPredictionCard({
     id: null,
     name: null,
   });
+  const [savedMsg, setSavedMsg] = useState(false);
 
   useEffect(() => {
     if (data) {
@@ -66,7 +67,16 @@ export default function SpecialPredictionCard({
         top_scorer_name: hasScorer ? scorer.name : null,
         top_scorer_api_id: hasScorer ? scorer.id : null,
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["special", roomId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["special", roomId] });
+      setSavedMsg(true);
+      setTimeout(() => setSavedMsg(false), 2500);
+    },
+    onError: (e: any) =>
+      alert(
+        "Не удалось сохранить спецпрогноз: " +
+          (e.response?.data?.detail || e.message || "ошибка")
+      ),
   });
 
   if (specialKind === "none") return null;
@@ -146,13 +156,18 @@ export default function SpecialPredictionCard({
       )}
 
       {!locked && (
-        <button
-          className="btn-primary"
-          onClick={() => save.mutate()}
-          disabled={save.isPending}
-        >
-          {save.isPending ? "Сохранение…" : "Сохранить спецпрогноз"}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            className="btn-primary"
+            onClick={() => save.mutate()}
+            disabled={save.isPending}
+          >
+            {save.isPending ? "Сохранение…" : "Сохранить спецпрогноз"}
+          </button>
+          {savedMsg && (
+            <span className="text-sm font-medium text-emerald-600">✓ Сохранено</span>
+          )}
+        </div>
       )}
     </section>
   );
