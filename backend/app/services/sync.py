@@ -90,23 +90,22 @@ async def fetch_and_apply_all(db: AsyncSession, *, with_groups: bool = True) -> 
     """Синхронизировать матчи по всем активным (league_id, season). Буквы групп
     (/standings) тянутся только для ЧМ. Устойчиво к сбоям: ошибка одной лиги
     (неверный сезон/недоступная лига/лимит/токен) не прерывает остальные —
-    собирается в `errors`. КОММИТИТ поуспешно каждую лигу и делает ROLLBACK при
-    сбое лиги: иначе первая же ошибка «отравляет» транзакцию PostgreSQL и роняет
-    весь синк (в т.ч. рабочие лиги и последующий аудит)."""
+    собирается в `errors`. Каждая лига обрабатывается в SAVEPOINT (begin_nested):
+    сбой откатывает только её, не «отравляя» общую транзакцию и не сбрасывая
+    (expire) объекты вызывающего. КОММИТ делает вызывающий."""
     total: dict = {"created": 0, "updated": 0, "rescored": 0, "errors": []}
     league_seasons = await active_league_seasons(db)
     for league_id, season in league_seasons:
         use_groups = with_groups and league_id == WORLD_CUP_LEAGUE_ID
         try:
-            fixtures = await football_api.fetch_fixtures(
-                league_id, season, with_groups=use_groups
-            )
-            stats = await apply_fixtures(db, fixtures)
-            await db.commit()
+            async with db.begin_nested():
+                fixtures = await football_api.fetch_fixtures(
+                    league_id, season, with_groups=use_groups
+                )
+                stats = await apply_fixtures(db, fixtures)
             for k in ("created", "updated", "rescored"):
                 total[k] += stats[k]
         except Exception as exc:
-            await db.rollback()
             total["errors"].append(f"лига {league_id}/{season}: {exc}")
     return total
 
