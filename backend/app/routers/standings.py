@@ -308,7 +308,7 @@ async def top_scorers(
     """Топ-5 бомбардиров турнира + все игроки, которых участники этой комнаты
     выбрали лучшим бомбардиром (с их голами). Данные — из снимка (Redis),
     обновляется ежедневно/по кнопке суперадмина."""
-    snap = await get_snapshot()
+    snap = await get_snapshot(ctx.room.league_id, ctx.room.season)
     scorers = snap.get("scorers", []) if snap else []
     by_id = {s["api_id"]: s for s in scorers}  # ключи — реальные ID из API
     # Разрешённые при обновлении снимка ID кураторских игроков (real_id

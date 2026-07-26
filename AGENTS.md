@@ -18,7 +18,7 @@
 | Тип | Лига | Тур | Спецпрогноз | Положение |
 |-----|------|-----|-------------|-----------|
 | `world_cup` | ЧМ (1) | суточный (10:00 МСК) | чемпион (авто) + бомбардир (вручную) | группы + плей-офф |
-| `rpl` | РПЛ (235) | неделя (среда→среда) | лидер лиги (вручную) | одна лиговая таблица |
+| `rpl` | РПЛ (235) | неделя (среда→среда) | лидер лиги + бомбардир (вручную) | одна лиговая таблица |
 | `ucl` | ЛЧ (2) | неделя (суббота→суббота) | победитель/чемпион (вручную) | швейцарская таблица + плей-офф |
 | `custom` | топ-5+РПЛ+ЛЧ | неделя (по метке матча) | нет | список выбранных матчей |
 
@@ -86,7 +86,9 @@ backend/
 │       ├── oauth/             # telegram.py (HMAC-верификация), yandex.py
 │       ├── football_api.py    # клиент API-Football (httpx async); fetch_fixtures(league, season)
 │       ├── tournament.py      # конфиг типов турниров (лига, схема туров, спецпрогноз) +
-│       │                      # tournament_match_conditions/match_belongs — скоуп матчей турнира
+│       │                      # tournament_match_conditions/match_belongs/special_deadline_at
+│       ├── teams_ru.py        # словарь EN→RU названий клубов (топ-5+РПЛ+ЛЧ)
+│       ├── logos.py           # скачивание логотипов команд в media/teams
 │       ├── scoring.py         # чистые функции начисления очков (unit-тесты обязательны)
 │       ├── tours.py           # tour_key: матч → дата тура (суточная/недельная по схеме лиги)
 │       ├── recalc.py          # оркестрация пересчёта по всем комнатам + rescore
@@ -104,7 +106,7 @@ backend/
 │           ├── state.py       # состояние диалога + одноразовые коды привязки
 │           ├── teams.py       # названия команд
 │           └── vk_client.py   # отправка сообщений в VK
-├── alembic/versions/          # 0001…0013 (rooms — 0004, room_match_multipliers — 0009, winner_team — 0010, tournaments: типы+league_id/season — 0012, tournament_matches — 0013)
+├── alembic/versions/          # 0001…0014 (rooms — 0004, room_match_multipliers — 0009, tournaments: типы+league_id/season — 0012, tournament_matches — 0013, teams+special_deadline+РПЛ leader_scorer — 0014)
 ├── tests/                     # test_scoring.py, test_auth.py, test_simulation.py (без БД)
 ├── scripts/
 │   ├── seed.py                # фикстуры из API-Football + первая комната
@@ -196,8 +198,9 @@ frontend/
 | league_id / season | INT NULLABLE | реальная лига+сезон API-Football (NULL у custom) |
 | tour_anchor | SMALLINT NULLABLE | якорный день недели туров (Пн=0…Вс=6); NULL = суточная группировка (ЧМ) |
 | starts_on / ends_on | DATE NULLABLE | окно включения матчей по метке тура (NULL = весь турнир) |
-| special_kind | VARCHAR(20) | вид спецпрогноза: `wc│leader│stage_or_champion│none` (по умолч. wc) |
+| special_kind | VARCHAR(20) | вид спецпрогноза: `wc│leader│leader_scorer│stage_or_champion│none` (по умолч. wc) |
 | special_result_team | VARCHAR(100) NULLABLE | вручную заданный ответ спецпрогноза (лидер лиги / победитель) |
+| special_deadline | TIMESTAMPTZ NULLABLE | настраиваемый админом срок подачи спецпрогноза (NULL = по первому матчу) |
 
 ### room_members
 
@@ -253,6 +256,18 @@ frontend/
 | added_at | TIMESTAMPTZ | |
 
 Явный набор матчей для типа `custom` (админ выбирает матчи из разных лиг). Для лиговых типов (ЧМ/РПЛ/ЛЧ) не используется — там набор выводится по `league_id/season/окну`. Индекс по `match_id`.
+
+### teams — справочник команд (русские имена + логотипы)
+
+| Поле | Тип | Описание |
+|------|-----|---------|
+| api_football_id | INT PK | id команды в API-Football |
+| name_en | VARCHAR(120) | английское имя (совпадает с `matches.home_team/away_team`) |
+| league_id | INT NULLABLE | лига |
+| logo_url | VARCHAR NULLABLE | URL логотипа из API |
+| logo_local | VARCHAR(60) NULLABLE | имя локального файла в `media/teams` (NULL — ещё не скачан) |
+
+Заполняется при синхронизации (`sync.upsert_team` из `_teams` в фикстуре). Русские имена клубов — словарь `services/teams_ru.py` (EN→RU, фолбэк — латиница); сборные — `bot/teams.py`/`frontend/utils/countries.ts`. Логотипы качаются `services/logos.py` в `media/teams/{id}.png` и раздаются `/api/v1/media/teams/...`. Эндпоинт `GET /teams` отдаёт `{name_en, name_ru, logo}` (фронт кэширует, `useTeamsMap`).
 
 ### team_matches — справочник матчей сборных (форма)
 
@@ -320,7 +335,7 @@ frontend/
 `prediction_set`, `prediction_updated`, `scores_recalculated`, `scorer_result_set`,
 `leader_result_set`, `champion_selected`, `top_scorer_selected`, `room_created`,
 `room_deleted`, `room_joined`, `room_password_changed`, `room_rules_changed`,
-`api_sync`, `nickname_changed`
+`api_sync`, `nickname_changed`, `account_linked`
 
 Индексы: `(created_at)`, `(event_type)`, `(actor_id)`.
 **Только запись** — никакого UPDATE/DELETE на этой таблице.
@@ -464,7 +479,11 @@ frontend/
 | GET | `/rooms/{id}/special-prediction/all` | Member | Все спецпрогнозы комнаты (после дедлайна; раскрывает раньше только суперадмин) |
 | POST | `/rooms/{id}/special-prediction/scorer-result` | RAdmin | `{player_api_id, player_name}` → начислить очки за бомбардира (ЧМ) **только в этом турнире** |
 | POST | `/rooms/{id}/special-prediction/leader-result` | RAdmin | `{team}` → начислить очки за лидера лиги/победителя (РПЛ/ЛЧ) **только в этом турнире** |
+| PATCH | `/rooms/{id}/special-deadline` | RAdmin | `{deadline}` (null — сброс) — настраиваемый срок подачи спецпрогноза |
 | GET | `/players/search?q=` | Auth | Автодополнение бомбардира (≥3 символа, API-Football) |
+| GET | `/teams` | Pub | Справочник команд: `[{name_en, name_ru, logo}]` (кэшируется фронтом) |
+| POST | `/auth/link/yandex` | Auth | URL авторизации Яндекса для привязки к текущему аккаунту |
+| POST | `/auth/link/telegram` | Auth | Привязать Telegram (данные виджета) к текущему аккаунту |
 
 ### Таблица лидеров — `/rooms/{id}/leaderboard`
 
@@ -556,14 +575,15 @@ read-эндпоинты комнат (`matches`, `predictions`, `special-predict
 
 ### Спецпрогнозы
 
-Вид спецпрогноза зависит от типа турнира (`room.special_kind`). Свои в каждом турнире; дедлайн — `room.first_match_at`. Хранятся в `special_predictions` (поле `champion_team` — универсальный «выбор команды»: чемпион ЧМ / лидер РПЛ / победитель ЛЧ; `top_scorer_*` — только ЧМ).
+Вид спецпрогноза зависит от типа турнира (`room.special_kind`). Свои в каждом турнире; **срок — `special_deadline_at(room)` = `room.special_deadline` (задаёт админ через `PATCH /rooms/{id}/special-deadline`) или, если не задан, первый матч**. Хранятся в `special_predictions` (`champion_team` — универсальный «выбор команды»: чемпион ЧМ / лидер РПЛ / победитель ЛЧ; `top_scorer_*` — ЧМ и РПЛ).
 
-- **`wc` (ЧМ):** чемпион + бомбардир. Чемпион — **автоматически** при пересчёте после финала (`stage='final'` в лиге ЧМ), при любом исходе: победитель = `final.winner_team` (пенальти/допвремя), иначе по счёту ОВ. Бомбардир — **вручную по комнатам**: `POST /rooms/{id}/special-prediction/scorer-result` (RAdmin).
-- **`leader` (РПЛ):** лидер лиги на финальный момент — **вручную по комнатам**: `POST /rooms/{id}/special-prediction/leader-result {team}` (RAdmin), начисляет `points_champion` угадавшим (`recalc.score_leader`).
-- **`stage_or_champion` (ЛЧ):** победитель общего этапа / чемпион — так же вручную через `leader-result`.
+- **`wc` (ЧМ):** чемпион + бомбардир. Чемпион — **автоматически** при пересчёте после финала (`stage='final'` в лиге ЧМ): победитель = `final.winner_team` (пенальти/допвремя), иначе по счёту ОВ. Бомбардир — **вручную по комнатам**: `POST /rooms/{id}/special-prediction/scorer-result` (RAdmin).
+- **`leader` (базовый лиговый):** лидер лиги на финальный момент — **вручную**: `POST /rooms/{id}/special-prediction/leader-result {team}` (RAdmin), начисляет `points_champion` (`recalc.score_leader`).
+- **`leader_scorer` (РПЛ):** лидер лиги + бомбардир — оба вручную (`leader-result` + `scorer-result`).
+- **`stage_or_champion` (ЛЧ):** победитель общего этапа / чемпион — вручную через `leader-result`.
 - **`none` (custom):** спецпрогноза нет.
 
-Начисление за команду (leader/champion вручную) идёт через один и тот же `leader-result`/`score_leader`. Спецпрогнозы других скрыты до дедлайна (раскрывает раньше только суперадмин); в таблице лидеров до старта видны только флажки «выбран/не выбран».
+Бомбардиры считаются по лиге+сезону: снимок в Redis `top_scorers:snapshot:{league}:{season}` (`top_scorers.refresh_all_top_scorers` — по лигам активных турниров со спецпрогнозом бомбардира). Спецпрогнозы других скрыты до срока (раскрывает раньше только суперадмин).
 
 ### Начисление очков
 
@@ -735,4 +755,4 @@ SPA, левый sidebar (на мобиле — нижняя панель). Ие�
 
 ---
 
-*Prediction Site · AGENTS.md · v6.0 (платформа турниров: ЧМ/РПЛ/ЛЧ/custom, июль 2026)*
+*Prediction Site · AGENTS.md · v6.1 (русские имена+логотипы клубов, РПЛ лидер+бомбардир, срок спецпрогноза, привязка Яндекс/Телеграм, июль 2026)*

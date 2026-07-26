@@ -41,6 +41,7 @@ from app.schemas.room import (
     RoomScoring,
     RoomSummary,
     RoundOut,
+    SpecialDeadlineUpdate,
     TournamentTypeOut,
 )
 from app.security import hash_password, verify_password
@@ -104,6 +105,7 @@ def _detail(room: Room, *, member_count: int, is_member: bool, my_role: str | No
         starts_on=room.starts_on,
         ends_on=room.ends_on,
         special_result_team=room.special_result_team,
+        special_deadline=room.special_deadline,
     )
 
 
@@ -411,6 +413,30 @@ async def update_rules(
     room.points_scorer = payload.points_scorer
     await db.commit()
     return _scoring(room)
+
+
+@router.patch("/{room_id}/special-deadline")
+async def update_special_deadline(
+    payload: SpecialDeadlineUpdate,
+    ctx: RoomContext = Depends(require_room_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Срок подачи спецпрогноза (админ комнаты). null сбрасывает к дефолту
+    (первый матч турнира)."""
+    ctx.room.special_deadline = payload.deadline
+    await audit.log_event(
+        db,
+        "room_rules_changed",
+        actor_id=ctx.user.id,
+        actor_nickname=ctx.user.nickname,
+        target_id=ctx.room.id,
+        details={
+            "room": ctx.room.name,
+            "special_deadline": payload.deadline.isoformat() if payload.deadline else None,
+        },
+    )
+    await db.commit()
+    return {"ok": True, "special_deadline": ctx.room.special_deadline}
 
 
 @router.patch("/{room_id}/rules-text")

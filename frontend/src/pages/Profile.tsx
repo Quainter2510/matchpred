@@ -1,12 +1,48 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/endpoints";
+import { API_BASE } from "../api/client";
 import Avatar from "../components/Avatar";
 import { useAuth } from "../store/auth";
 
 export default function Profile() {
-  const { user, setUser, logout } = useAuth();
+  const { user, setUser, logout, loadMe } = useAuth();
   const navigate = useNavigate();
+
+  const linked = new Set(user?.linked_providers || []);
+  const [linkMsg, setLinkMsg] = useState<{ text: string; ok: boolean } | null>(null);
+
+  // Результат привязки из query (?linked=… / ?link_error=…).
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    if (p.get("linked")) {
+      setLinkMsg({ text: "Аккаунт успешно привязан", ok: true });
+      loadMe();
+      window.history.replaceState({}, "", "/profile");
+    } else if (p.get("link_error")) {
+      setLinkMsg({
+        text:
+          p.get("link_error") === "taken"
+            ? "Этот аккаунт уже привязан к другому пользователю"
+            : "Не удалось привязать аккаунт",
+        ok: false,
+      });
+      window.history.replaceState({}, "", "/profile");
+    }
+  }, [loadMe]);
+
+  const linkYandex = async () => {
+    try {
+      const { url } = await api.linkYandex();
+      window.location.href = url;
+    } catch (e: any) {
+      alert(e.response?.data?.detail || "Не удалось начать привязку Яндекса");
+    }
+  };
+  const linkTelegram = () => {
+    localStorage.setItem("tg_link_intent", "1");
+    window.location.href = `${API_BASE}/auth/telegram/oauth-redirect`;
+  };
 
   const handleLogout = async () => {
     await logout();
@@ -71,6 +107,18 @@ export default function Profile() {
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-bold">Профиль</h1>
+
+      {linkMsg && (
+        <div
+          className={`rounded-lg px-4 py-2 text-sm ${
+            linkMsg.ok
+              ? "bg-emerald-100 text-emerald-800"
+              : "bg-red-100 text-red-700"
+          }`}
+        >
+          {linkMsg.text}
+        </div>
+      )}
 
       <div className="card space-y-4">
         <div className="flex items-center gap-4">
@@ -194,6 +242,56 @@ export default function Profile() {
             )}
           </>
         )}
+      </div>
+
+      <div className="card space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Яндекс</h2>
+          {linked.has("yandex") && (
+            <span className="flex items-center gap-1 text-sm font-medium text-emerald-600">
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-xs text-white">
+                ✓
+              </span>
+              Привязан
+            </span>
+          )}
+        </div>
+        <p className="text-sm text-slate-500">
+          {linked.has("yandex")
+            ? "Вы можете входить через Яндекс. Привязать другой аккаунт Яндекса:"
+            : "Привяжите аккаунт Яндекса, чтобы входить через него."}
+        </p>
+        <button
+          className="btn block w-full bg-red-500 text-white hover:bg-red-600"
+          onClick={linkYandex}
+        >
+          {linked.has("yandex") ? "Привязать другой Яндекс" : "Привязать Яндекс"}
+        </button>
+      </div>
+
+      <div className="card space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Telegram</h2>
+          {linked.has("telegram") && (
+            <span className="flex items-center gap-1 text-sm font-medium text-emerald-600">
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-xs text-white">
+                ✓
+              </span>
+              Привязан
+            </span>
+          )}
+        </div>
+        <p className="text-sm text-slate-500">
+          {linked.has("telegram")
+            ? "Вы можете входить через Telegram. Привязать другой аккаунт Telegram:"
+            : "Привяжите аккаунт Telegram, чтобы входить через него."}
+        </p>
+        <button
+          className="btn block w-full bg-[#2AABEE] text-white hover:bg-[#1d96d4]"
+          onClick={linkTelegram}
+        >
+          {linked.has("telegram") ? "Привязать другой Telegram" : "Привязать Telegram"}
+        </button>
       </div>
 
       <div className="card">

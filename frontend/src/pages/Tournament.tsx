@@ -159,12 +159,14 @@ function defaultRules(
     `• разница мячей — ${s.points_diff}`,
     `• исход (победитель/ничья) — ${s.points_outcome}`,
   ];
-  if (specialKind === "leader") {
+  if (specialKind === "leader" || specialKind === "leader_scorer") {
     lines.push(`• лидер лиги на финальный момент — ${s.points_champion}`);
   } else if (specialKind === "stage_or_champion") {
     lines.push(`• победитель / чемпион — ${s.points_champion}`);
   } else if (specialKind === "wc" || specialKind === undefined) {
     lines.push(`• чемпион турнира — ${s.points_champion}`);
+  }
+  if (specialKind === "wc" || specialKind === "leader_scorer" || specialKind === undefined) {
     lines.push(`• лучший бомбардир — ${s.points_scorer}`);
   }
   return lines.join("\n");
@@ -348,6 +350,7 @@ export default function Tournament() {
         <WcStandings
           roomId={roomId!}
           tournamentType={room.data?.tournament_type}
+          specialKind={room.data?.special_kind}
         />
       )}
 

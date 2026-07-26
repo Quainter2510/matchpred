@@ -103,7 +103,13 @@ for _ru, _names in _TEAMS:
 
 
 def team_ru(name: str | None) -> str:
-    """Russian team name, falling back to the original string."""
+    """Russian team name: сначала сборные (ЧМ), затем клубы (teams_ru), иначе —
+    исходная строка (латиница)."""
     if not name:
         return ""
-    return _BY_NAME.get(name.strip().lower(), name)
+    national = _BY_NAME.get(name.strip().lower())
+    if national:
+        return national
+    from app.services.teams_ru import club_ru
+
+    return club_ru(name) or name

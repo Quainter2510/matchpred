@@ -7,6 +7,7 @@ import { formatDate, formatTime } from "../../utils/dates";
 import TeamName from "../../components/TeamName";
 import MultiplierBadge from "../../components/MultiplierBadge";
 import PlayerSearch from "../../components/PlayerSearch";
+import { useTeamName } from "../../utils/useTeams";
 
 const MULTIPLIERS = [0, 1, 2, 3];
 
@@ -16,12 +17,14 @@ function ruleFields(specialKind: string): { key: keyof RoomScoring; label: strin
     { key: "points_diff", label: "Разница мячей" },
     { key: "points_outcome", label: "Исход (победитель/ничья)" },
   ];
-  if (specialKind === "leader") {
+  if (specialKind === "leader" || specialKind === "leader_scorer") {
     base.push({ key: "points_champion", label: "Лидер лиги" });
   } else if (specialKind === "stage_or_champion") {
     base.push({ key: "points_champion", label: "Победитель / чемпион" });
   } else if (specialKind === "wc") {
     base.push({ key: "points_champion", label: "Чемпион турнира" });
+  }
+  if (specialKind === "wc" || specialKind === "leader_scorer") {
     base.push({ key: "points_scorer", label: "Лучший бомбардир" });
   }
   return base;
@@ -255,6 +258,65 @@ function Members({ roomId }: { roomId: string }) {
   );
 }
 
+// Настраиваемый срок подачи спецпрогноза (datetime-local в местном времени).
+function SpecialDeadline({ room }: { room: RoomDetail }) {
+  const qc = useQueryClient();
+  const toLocal = (iso: string | null) => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000)
+      .toISOString()
+      .slice(0, 16);
+  };
+  const [val, setVal] = useState(toLocal(room.special_deadline));
+  useEffect(() => setVal(toLocal(room.special_deadline)), [room.special_deadline]);
+
+  const save = useMutation({
+    mutationFn: (deadline: string | null) => api.setSpecialDeadline(room.id, deadline),
+    onSuccess: () => {
+      alert("Срок подачи спецпрогноза обновлён");
+      qc.invalidateQueries({ queryKey: ["room", room.id] });
+    },
+    onError: (e: any) => alert(e.response?.data?.detail || "Ошибка"),
+  });
+
+  return (
+    <section className="card max-w-lg space-y-3">
+      <h2 className="text-lg font-semibold">Срок подачи спецпрогноза</h2>
+      <p className="text-sm text-slate-500">
+        До этого момента участники могут выбрать/менять спецпрогноз, после —
+        приём закрыт и чужие выборы раскрываются. Если не задан — по первому
+        матчу турнира.
+      </p>
+      <input
+        type="datetime-local"
+        className="input"
+        value={val}
+        onChange={(e) => setVal(e.target.value)}
+      />
+      <div className="flex gap-2">
+        <button
+          className="btn-primary"
+          disabled={save.isPending || !val}
+          onClick={() => save.mutate(new Date(val).toISOString())}
+        >
+          Сохранить срок
+        </button>
+        <button
+          className="btn-ghost"
+          disabled={save.isPending}
+          onClick={() => {
+            setVal("");
+            save.mutate(null);
+          }}
+        >
+          Сбросить (по первому матчу)
+        </button>
+      </div>
+    </section>
+  );
+}
+
 function RoomPassword({ roomId }: { roomId: string }) {
   const [pwd, setPwd] = useState("");
   const change = useMutation({
@@ -452,9 +514,10 @@ function LeaderResult({
     queryKey: ["standings", roomId],
     queryFn: () => api.standings(roomId),
   });
+  const teamName = useTeamName();
   const teams = Array.from(
     new Set((standings.data?.groups.flatMap((g) => g.teams) || []).map((t) => t.team))
-  ).sort((a, b) => a.localeCompare(b, "ru"));
+  ).sort((a, b) => teamName(a).localeCompare(teamName(b), "ru"));
   const [team, setTeam] = useState("");
   const isLeader = specialKind === "leader";
 
@@ -481,7 +544,7 @@ function LeaderResult({
           <option value="">— выберите команду —</option>
           {teams.map((t) => (
             <option key={t} value={t}>
-              {t}
+              {teamName(t)}
             </option>
           ))}
         </select>
@@ -706,10 +769,17 @@ export default function RoomAdmin() {
       )}
       <Multipliers roomId={roomId!} />
       {/* Итоговый результат спецпрогноза — по типу турнира. */}
-      {room.data?.special_kind === "wc" && <ScorerResult roomId={roomId!} />}
+      {(room.data?.special_kind === "wc" ||
+        room.data?.special_kind === "leader_scorer") && (
+        <ScorerResult roomId={roomId!} />
+      )}
       {(room.data?.special_kind === "leader" ||
-        room.data?.special_kind === "stage_or_champion") && (
+        room.data?.special_kind === "stage_or_champion" ||
+        room.data?.special_kind === "leader_scorer") && (
         <LeaderResult roomId={roomId!} specialKind={room.data.special_kind} />
+      )}
+      {room.data && room.data.special_kind !== "none" && (
+        <SpecialDeadline room={room.data} />
       )}
       <RoomPassword roomId={roomId!} />
       {room.data && <RulesText room={room.data} />}

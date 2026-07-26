@@ -243,9 +243,11 @@ function PlayoffMatchRow({ m }: { m: StandingsMatch }) {
 export default function WcStandings({
   roomId,
   tournamentType = "world_cup",
+  specialKind = "wc",
 }: {
   roomId: string;
   tournamentType?: string;
+  specialKind?: string;
 }) {
   const { data, isLoading } = useQuery({
     queryKey: ["standings", roomId],
@@ -258,10 +260,12 @@ export default function WcStandings({
     return <p className="text-slate-500">Матчи ещё не добавлены.</p>;
 
   const isWorldCup = tournamentType === "world_cup";
+  // Блок бомбардиров — у турниров со спецпрогнозом бомбардира (ЧМ, РПЛ).
+  const showScorers = specialKind === "wc" || specialKind === "leader_scorer";
 
   return (
     <div className="space-y-6">
-      {isWorldCup && <TopScorersBlock roomId={roomId} />}
+      {showScorers && <TopScorersBlock roomId={roomId} />}
 
       {data.groups.length > 0 &&
         (isWorldCup ? (

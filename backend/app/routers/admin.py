@@ -14,9 +14,10 @@ from app.dependencies import require_superadmin
 from app.models import AuditLog, User
 from app.schemas.admin import AuditLogOut, SyncLeagueRequest, TransferRequest
 from app.services import audit
+from app.services.logos import download_missing_logos
 from app.services.recalc import recalculate_all
 from app.services.sync import fetch_and_apply_all, sync_league
-from app.services.top_scorers import refresh_top_scorers
+from app.services.top_scorers import refresh_all_top_scorers
 
 router = APIRouter(tags=["admin"])
 
@@ -45,6 +46,7 @@ EVENT_LABELS_RU = {
     "room_rules_changed": "Изменён регламент",
     "api_sync": "Синхронизация с API",
     "nickname_changed": "Смена никнейма",
+    "account_linked": "Привязан аккаунт",
 }
 
 
@@ -68,12 +70,18 @@ async def sync_api(
     await db.commit()
     summary = await recalculate_all(db)
     await db.commit()
-    # Обновляем снимок бомбардиров (не критично для синка — глушим ошибки).
+    # Логотипы всех новых команд.
     try:
-        scorers = await refresh_top_scorers()
+        logos = await download_missing_logos(db)
+        await db.commit()
+    except Exception:
+        logos = 0
+    # Обновляем снимки бомбардиров (не критично для синка — глушим ошибки).
+    try:
+        scorers = await refresh_all_top_scorers()
     except Exception:
         scorers = 0
-    return {**stats, **summary, "top_scorers": scorers}
+    return {**stats, **summary, "logos": logos, "top_scorers": scorers}
 
 
 @router.post("/admin/sync-league")

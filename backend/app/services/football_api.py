@@ -113,6 +113,20 @@ def _normalize_fixture(
         "away_score_ft": away_score,
         "winner_team": winner_team,
         "status": _STATUS_MAP.get(raw_status, "scheduled"),
+        # Служебное: инфо о командах (id/имя/logo) для справочника teams.
+        # apply_fixtures/seed извлекают его и НЕ передают в Match(**fx).
+        "_teams": [
+            {
+                "id": teams["home"].get("id"),
+                "name": home,
+                "logo": teams["home"].get("logo"),
+            },
+            {
+                "id": teams["away"].get("id"),
+                "name": away,
+                "logo": teams["away"].get("logo"),
+            },
+        ],
     }
 
 
@@ -227,15 +241,12 @@ async def fetch_wc_team_ids() -> dict[int, str]:
     return out
 
 
-async def fetch_top_scorers() -> list[dict]:
-    """Бомбардиры турнира (лига+сезон) по убыванию голов. До первых забитых
-    мячей API может вернуть пустой список."""
+async def fetch_top_scorers(league_id: int, season: int) -> list[dict]:
+    """Бомбардиры лиги+сезона по убыванию голов. До первых забитых мячей API
+    может вернуть пустой список."""
     data = await _get(
         "/players/topscorers",
-        {
-            "league": settings.API_FOOTBALL_LEAGUE_ID,
-            "season": settings.API_FOOTBALL_SEASON,
-        },
+        {"league": league_id, "season": season},
     )
     out: list[dict] = []
     for item in data.get("response", []):
@@ -261,17 +272,13 @@ async def fetch_top_scorers() -> list[dict]:
     return out
 
 
-async def fetch_player_goals(player_id: int) -> dict | None:
-    """Статистика одного игрока в турнире (лига+сезон) в формате строки
-    снимка бомбардиров: {api_id, name, photo, team, goals}. None, если у API
-    нет данных по игроку в этом турнире."""
+async def fetch_player_goals(player_id: int, league_id: int, season: int) -> dict | None:
+    """Статистика одного игрока в лиге+сезоне в формате строки снимка
+    бомбардиров: {api_id, name, photo, team, goals}. None, если у API нет данных
+    по игроку в этом турнире."""
     data = await _get(
         "/players",
-        {
-            "id": player_id,
-            "league": settings.API_FOOTBALL_LEAGUE_ID,
-            "season": settings.API_FOOTBALL_SEASON,
-        },
+        {"id": player_id, "league": league_id, "season": season},
     )
     resp = data.get("response") or []
     if not resp:

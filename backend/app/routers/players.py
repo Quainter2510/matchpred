@@ -17,7 +17,7 @@ from app.services.simulation import (
     points_for,
     room_sim_totals,
 )
-from app.services.tournament import tournament_match_conditions
+from app.services.tournament import special_deadline_at, tournament_match_conditions
 
 router = APIRouter(prefix="/rooms/{room_id}/players", tags=["players"])
 
@@ -70,9 +70,9 @@ async def player_profile(
     reveal = is_self or ctx.is_superadmin
     now = sim.effective_now() if sim.active else datetime.now(timezone.utc)
 
-    # Special predictions (champion / top scorer): shown only after the
-    # tournament starts; the superadmin always.
-    specials_revealed = ctx.is_superadmin or now >= ctx.room.first_match_at
+    # Special predictions (champion / top scorer): shown only after the special
+    # deadline; the superadmin always.
+    specials_revealed = ctx.is_superadmin or now >= special_deadline_at(ctx.room)
     sp = await db.scalar(
         select(SpecialPrediction).where(
             SpecialPrediction.room_id == room_id,
@@ -170,7 +170,7 @@ async def player_profile(
         outcome_count=outcome_count,
         is_self=is_self,
         specials_revealed=specials_revealed,
-        first_match_at=ctx.room.first_match_at,
+        first_match_at=special_deadline_at(ctx.room),
         champion_team=champion_team,
         top_scorer_name=top_scorer_name,
         matches=matches,

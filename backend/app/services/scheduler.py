@@ -13,9 +13,10 @@ from app.config import settings
 from app.database import AsyncSessionLocal
 from app.models import Match
 from app.services import audit
+from app.services.logos import download_missing_logos
 from app.services.recalc import recalculate_all
 from app.services.sync import fetch_and_apply_all
-from app.services.top_scorers import refresh_top_scorers
+from app.services.top_scorers import refresh_all_top_scorers
 
 log = logging.getLogger("scheduler")
 scheduler = AsyncIOScheduler(timezone="UTC")
@@ -62,6 +63,9 @@ async def sync_tick(force: bool = False) -> None:
             await db.commit()
             await recalculate_all(db)
             await db.commit()
+            # Логотипы новых команд — порциями, чтобы тик не тормозил.
+            await download_missing_logos(db, limit=40)
+            await db.commit()
     except Exception as exc:  # network errors must not crash the scheduler
         log.warning("API-Football sync failed: %s", exc)
         return
@@ -69,9 +73,10 @@ async def sync_tick(force: bool = False) -> None:
 
 
 async def top_scorers_tick() -> None:
-    """Ежедневное обновление снимка бомбардиров (10:00 МСК)."""
+    """Ежедневное обновление снимков бомбардиров всех лиг со спецпрогнозом
+    бомбардира (10:00 МСК)."""
     try:
-        n = await refresh_top_scorers()
+        n = await refresh_all_top_scorers()
         log.info("top_scorers refreshed: %s", n)
     except Exception as exc:  # network errors must not crash the scheduler
         log.warning("top scorers refresh failed: %s", exc)

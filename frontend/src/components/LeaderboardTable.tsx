@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { LeaderboardEntry } from "../api/endpoints";
 import { useAuth } from "../store/auth";
 import { findCountry } from "../utils/countries";
+import { useTeamsMap } from "../utils/useTeams";
 import Avatar from "./Avatar";
 import Flag from "./Flag";
 
@@ -33,15 +34,24 @@ function scorerInitials(name: string): string {
 }
 
 function ChampionCell({ e, started }: { e: LeaderboardEntry; started: boolean }) {
+  const teams = useTeamsMap();
   if (!started) return <StatusMark set={e.has_champion} correct={e.champion_correct} />;
   if (!e.champion_team) return <span className="text-slate-300">—</span>;
   const c = findCountry(e.champion_team);
+  const info = c ? null : teams.get(e.champion_team.trim().toLowerCase());
+  const name = c?.ru ?? info?.name_ru ?? e.champion_team;
   return (
     <span
       className={`inline-flex ${e.champion_correct ? "rounded ring-2 ring-emerald-500" : ""}`}
-      title={c?.ru ?? e.champion_team}
+      title={name}
     >
-      {c ? <Flag code={c.code} title={c.ru} /> : <span className="text-xs">{e.champion_team}</span>}
+      {c ? (
+        <Flag code={c.code} title={c.ru} />
+      ) : info?.logo ? (
+        <img src={info.logo} alt="" title={name} className="h-4 w-4 object-contain" />
+      ) : (
+        <span className="text-xs">{name.slice(0, 3)}</span>
+      )}
     </span>
   );
 }
@@ -80,9 +90,15 @@ export default function LeaderboardTable({
   const showChampion =
     specialKind === "wc" ||
     specialKind === "leader" ||
-    specialKind === "stage_or_champion";
-  const showScorer = specialKind === "wc";
-  const championTitle = specialKind === "leader" ? "Лидер лиги" : "Победитель";
+    specialKind === "stage_or_champion" ||
+    specialKind === "leader_scorer";
+  const showScorer = specialKind === "wc" || specialKind === "leader_scorer";
+  const championTitle =
+    specialKind === "leader" || specialKind === "leader_scorer"
+      ? "Лидер лиги"
+      : specialKind === "wc"
+        ? "Чемпион"
+        : "Победитель";
   const championIcon = specialKind === "wc" ? "🏆" : "🥇";
 
   if (!entries.length)

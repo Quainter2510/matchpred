@@ -16,6 +16,7 @@ from app.redis_client import (
 )
 from app.schemas.leaderboard import LeaderboardEntry, MyLeaderboardEntry
 from app.services.simulation import SimContext, get_sim, room_sim_totals
+from app.services.tournament import special_deadline_at
 
 router = APIRouter(prefix="/rooms/{room_id}/leaderboard", tags=["leaderboard"])
 
@@ -100,8 +101,10 @@ async def _get_leaderboard(db: AsyncSession, room_id, started: bool) -> list[dic
 
 
 def _started(ctx: RoomContext, sim: SimContext) -> bool:
+    """«Стартовал» для раскрытия чужих спецпрогнозов — по сроку спецпрогноза."""
     now = sim.effective_now() if sim.active else datetime.now(timezone.utc)
-    return bool(ctx.room.first_match_at and now >= ctx.room.first_match_at)
+    deadline = special_deadline_at(ctx.room)
+    return bool(deadline and now >= deadline)
 
 
 async def _entries(

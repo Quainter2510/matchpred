@@ -65,6 +65,11 @@ class Room(Base):
         String(20), nullable=False, server_default="wc"
     )
     special_result_team: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # Отдельный настраиваемый админом срок подачи спецпрогноза. NULL = как
+    # раньше, по первому матчу турнира (first_match_at).
+    special_deadline: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Free-form regulations text shown behind the "i" button next to the
     # title. NULL = show the default description built from the point values.

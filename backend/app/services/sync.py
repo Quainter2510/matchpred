@@ -12,10 +12,33 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Match, Room, TournamentMatch
+from app.models import Match, Room, Team, TournamentMatch
 from app.services import audit, football_api
 from app.services.recalc import rescore_match
 from app.services.tournament import WORLD_CUP_LEAGUE_ID
+
+
+async def upsert_team(db: AsyncSession, info: dict, league_id: int | None) -> None:
+    """Апсерт справочника команд (id/имя/logo) из данных фикстуры."""
+    tid = info.get("id")
+    if not tid:
+        return
+    existing = await db.get(Team, tid)
+    if existing:
+        existing.name_en = info.get("name") or existing.name_en
+        if league_id is not None:
+            existing.league_id = league_id
+        if info.get("logo"):
+            existing.logo_url = info["logo"]
+    else:
+        db.add(
+            Team(
+                api_football_id=tid,
+                name_en=info.get("name") or "",
+                league_id=league_id,
+                logo_url=info.get("logo"),
+            )
+        )
 
 
 async def active_league_seasons(db: AsyncSession) -> list[tuple[int, int]]:
@@ -84,6 +107,11 @@ async def apply_fixtures(db: AsyncSession, fixtures: list[dict]) -> dict:
     audit log / admin UI. Does not commit."""
     created, updated, rescored = 0, 0, 0
     for fx in fixtures:
+        # Инфо о командах — в справочник teams, из dict матча убираем.
+        teams_info = fx.pop("_teams", None) or []
+        for t in teams_info:
+            await upsert_team(db, t, fx.get("league_id"))
+
         existing = await db.scalar(
             select(Match).where(Match.api_football_id == fx["api_football_id"])
         )

@@ -1,6 +1,7 @@
 from app.models.match import (
     Match,
     RoomMatchMultiplier,
+    Team,
     TeamMatch,
     TournamentMatch,
 )
@@ -15,6 +16,7 @@ __all__ = [
     "RoomMember",
     "Match",
     "RoomMatchMultiplier",
+    "Team",
     "TeamMatch",
     "TournamentMatch",
     "Prediction",

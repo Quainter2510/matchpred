@@ -23,6 +23,7 @@ from app.schemas.special import (
 from app.services import audit, football_api
 from app.services.recalc import score_leader, score_top_scorer
 from app.services.simulation import SimContext, get_sim
+from app.services.tournament import special_deadline_at
 
 router = APIRouter(prefix="/rooms/{room_id}/special-prediction", tags=["special"])
 players_router = APIRouter(tags=["players"])
@@ -30,7 +31,8 @@ players_router = APIRouter(tags=["players"])
 
 def _locked(room, sim: SimContext | None = None) -> bool:
     now = sim.effective_now() if sim and sim.active else datetime.now(timezone.utc)
-    return bool(room.first_match_at and now >= room.first_match_at)
+    deadline = special_deadline_at(room)
+    return bool(deadline and now >= deadline)
 
 
 @router.get("/my", response_model=SpecialPredictionOut)
@@ -79,13 +81,15 @@ async def update_special(
     prev_scorer = sp.top_scorer_api_id if sp else None
     if not sp:
         sp = SpecialPrediction(
-            room_id=ctx.room.id, user_id=ctx.user.id, locked_at=ctx.room.first_match_at
+            room_id=ctx.room.id,
+            user_id=ctx.user.id,
+            locked_at=special_deadline_at(ctx.room),
         )
         db.add(sp)
     sp.champion_team = payload.champion_team
     sp.top_scorer_name = payload.top_scorer_name
     sp.top_scorer_api_id = payload.top_scorer_api_id
-    sp.locked_at = ctx.room.first_match_at
+    sp.locked_at = special_deadline_at(ctx.room)
 
     # Журнал: пишем только при реальном изменении выбора.
     if payload.champion_team and payload.champion_team != prev_champion:

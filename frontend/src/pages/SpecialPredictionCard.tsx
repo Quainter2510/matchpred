@@ -4,6 +4,16 @@ import { api, SpecialKind } from "../api/endpoints";
 import PlayerSearch from "../components/PlayerSearch";
 import CountrySelect from "../components/CountrySelect";
 import TeamName from "../components/TeamName";
+import { useTeamName } from "../utils/useTeams";
+
+const TEAM_KINDS: SpecialKind[] = ["leader", "stage_or_champion", "leader_scorer"];
+const SCORER_KINDS: SpecialKind[] = ["wc", "leader_scorer"];
+
+function teamLabel(kind: SpecialKind): string {
+  if (kind === "wc") return "Чемпион турнира";
+  if (kind === "stage_or_champion") return "Победитель / чемпион";
+  return "Лидер лиги на финальный момент";
+}
 
 export default function SpecialPredictionCard({
   roomId,
@@ -18,22 +28,23 @@ export default function SpecialPredictionCard({
     queryFn: () => api.mySpecial(roomId),
   });
 
-  // Командные спецпрогнозы (лидер лиги РПЛ / победитель или чемпион ЛЧ) —
-  // выбор одной команды.
-  const isTeamSpecial =
-    specialKind === "leader" || specialKind === "stage_or_champion";
-  // Список команд турнира — для селекта вместо ручного ввода.
+  const hasTeam = TEAM_KINDS.includes(specialKind);
+  const hasScorer = SCORER_KINDS.includes(specialKind);
+  // Команда-выбор для ЧМ — сборная (CountrySelect), для лиг — клуб (селект).
+  const isClub = specialKind !== "wc";
+
+  const teamName = useTeamName();
   const standings = useQuery({
     queryKey: ["standings", roomId],
     queryFn: () => api.standings(roomId),
-    enabled: isTeamSpecial,
+    enabled: hasTeam && isClub,
   });
   const teams = useMemo(() => {
     const rows = standings.data?.groups.flatMap((g) => g.teams) || [];
     return Array.from(new Set(rows.map((t) => t.team))).sort((a, b) =>
-      a.localeCompare(b, "ru")
+      teamName(a).localeCompare(teamName(b), "ru")
     );
-  }, [standings.data]);
+  }, [standings.data, teamName]);
 
   const [champion, setChampion] = useState("");
   const [scorer, setScorer] = useState<{ id: number | null; name: string | null }>({
@@ -51,92 +62,77 @@ export default function SpecialPredictionCard({
   const save = useMutation({
     mutationFn: () =>
       api.updateSpecial(roomId, {
-        champion_team: champion || null,
-        // Лидер лиги — только команда; бомбардир не участвует.
-        top_scorer_name: specialKind === "wc" ? scorer.name : null,
-        top_scorer_api_id: specialKind === "wc" ? scorer.id : null,
+        champion_team: hasTeam ? champion || null : null,
+        top_scorer_name: hasScorer ? scorer.name : null,
+        top_scorer_api_id: hasScorer ? scorer.id : null,
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["special", roomId] }),
   });
 
-  // Типы без спецпрогноза (custom) — карточку не показываем.
   if (specialKind === "none") return null;
   if (isLoading) return null;
   const locked = data?.locked;
-  const isLeader = isTeamSpecial;
-  const teamLabel =
-    specialKind === "leader"
-      ? "Лидер лиги на финальный момент"
-      : "Победитель / чемпион";
-
   const championSaved = !!data?.champion_team && champion === data.champion_team;
   const scorerSaved =
     !!data?.top_scorer_api_id && scorer.id === data.top_scorer_api_id;
 
   return (
     <section className="card space-y-3">
-      <h2 className="text-lg font-semibold">
-        {isLeader ? "Спецпрогноз" : "Спецпрогнозы"}
-      </h2>
+      <h2 className="text-lg font-semibold">Спецпрогнозы</h2>
       {locked && (
         <p className="rounded bg-amber-100 px-3 py-2 text-sm text-amber-800">
           Приём спецпрогнозов завершён.
-          {data?.champion_points != null &&
-            ` ${isLeader ? "Лидер" : "Чемпион"}: +${data.champion_points}.`}
-          {!isLeader &&
+          {hasTeam &&
+            data?.champion_points != null &&
+            ` ${teamLabel(specialKind)}: +${data.champion_points}.`}
+          {hasScorer &&
             data?.scorer_points != null &&
             ` Бомбардир: +${data.scorer_points}.`}
         </p>
       )}
-      <div>
-        <label className="text-sm text-slate-600">
-          {isLeader ? teamLabel : "Чемпион турнира"}
-        </label>
-        {locked ? (
-          <div className="input flex items-center bg-slate-50">
-            {champion ? (
-              <TeamName team={champion} />
-            ) : (
-              <span className="text-slate-400">—</span>
-            )}
-          </div>
-        ) : isLeader ? (
-          // Лидер лиги — команда клуба; выбор из команд турнира. Если таблица
-          // ещё пуста, разрешаем ручной ввод названия.
-          teams.length > 0 ? (
+
+      {hasTeam && (
+        <div>
+          <label className="text-sm text-slate-600">{teamLabel(specialKind)}</label>
+          {locked ? (
+            <div className="input flex items-center bg-slate-50">
+              {champion ? (
+                <TeamName team={champion} />
+              ) : (
+                <span className="text-slate-400">—</span>
+              )}
+            </div>
+          ) : !isClub ? (
+            <CountrySelect
+              value={champion}
+              onChange={setChampion}
+              highlight={championSaved}
+            />
+          ) : teams.length > 0 ? (
             <select
-              className={`input ${
-                championSaved ? "border-emerald-400 bg-emerald-50" : ""
-              }`}
+              className={`input ${championSaved ? "border-emerald-400 bg-emerald-50" : ""}`}
               value={champion}
               onChange={(e) => setChampion(e.target.value)}
             >
               <option value="">— выберите команду —</option>
               {teams.map((t) => (
                 <option key={t} value={t}>
-                  {t}
+                  {teamName(t)}
                 </option>
               ))}
             </select>
           ) : (
             <input
-              className={`input ${
-                championSaved ? "border-emerald-400 bg-emerald-50" : ""
-              }`}
+              className={`input ${championSaved ? "border-emerald-400 bg-emerald-50" : ""}`}
               value={champion}
               onChange={(e) => setChampion(e.target.value)}
               placeholder="Название команды"
             />
-          )
-        ) : (
-          <CountrySelect
-            value={champion}
-            onChange={setChampion}
-            highlight={championSaved}
-          />
-        )}
-      </div>
-      {!isLeader && (
+          )}
+        </div>
+      )}
+
+      {hasScorer && (
         <div>
           <label className="text-sm text-slate-600">Лучший бомбардир</label>
           <PlayerSearch
@@ -147,6 +143,7 @@ export default function SpecialPredictionCard({
           />
         </div>
       )}
+
       {!locked && (
         <button
           className="btn-primary"

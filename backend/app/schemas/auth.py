@@ -29,6 +29,8 @@ class MeResponse(BaseModel):
     is_any_admin: bool = False
     # Whether a VK account is linked (for the profile indicator).
     vk_linked: bool = False
+    # Все привязанные провайдеры (yandex/telegram/vk) — для профиля.
+    linked_providers: list[str] = []
 
 
 class UpdateNicknameRequest(BaseModel):

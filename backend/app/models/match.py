@@ -84,6 +84,28 @@ class RoomMatchMultiplier(Base):
     )
 
 
+class Team(Base):
+    """Справочник команд (клубов) из API-Football — для русских названий и
+    логотипов. Заполняется при синхронизации фикстур (id/имя/logo). Русское имя
+    берётся из словаря `services/teams_ru.py`, логотип скачивается локально
+    (`services/logos.py`) и раздаётся из `media/teams/`."""
+
+    __tablename__ = "teams"
+    __table_args__ = (Index("ix_teams_name_en", "name_en"),)
+
+    # Реальный ID команды в API-Football (стабилен).
+    api_football_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name_en: Mapped[str] = mapped_column(String(120), nullable=False)
+    league_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    logo_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Имя локального файла логотипа в media/teams (напр. "529.png"); NULL — ещё
+    # не скачан.
+    logo_local: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class TournamentMatch(Base):
     """Явный набор матчей кастомного турнира (тип custom): админ вручную
     выбирает матчи из разных лиг. Для лиговых типов (ЧМ/РПЛ/ЛЧ) не используется —

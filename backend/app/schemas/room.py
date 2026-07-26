@@ -53,6 +53,12 @@ class RoomDetail(RoomSummary):
     starts_on: date | None = None
     ends_on: date | None = None
     special_result_team: str | None = None
+    special_deadline: datetime | None = None
+
+
+class SpecialDeadlineUpdate(BaseModel):
+    # Срок подачи спецпрогноза. null — сбросить к «по первому матчу турнира».
+    deadline: datetime | None = None
 
 
 class TournamentTypeOut(BaseModel):

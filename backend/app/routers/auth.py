@@ -66,16 +66,19 @@ async def _issue_access(db: AsyncSession, user: User) -> str:
     return create_access_token(str(user.id), user.nickname, user.system_role)
 
 
-async def _vk_linked(db: AsyncSession, user_id: uuid.UUID) -> bool:
-    found = await db.scalar(
-        select(OAuthAccount.id).where(
-            OAuthAccount.user_id == user_id, OAuthAccount.provider == "vk"
+async def _linked_providers(db: AsyncSession, user_id: uuid.UUID) -> list[str]:
+    rows = (
+        await db.execute(
+            select(OAuthAccount.provider)
+            .where(OAuthAccount.user_id == user_id)
+            .distinct()
         )
-    )
-    return found is not None
+    ).all()
+    return [p for (p,) in rows]
 
 
 async def _me_full(db: AsyncSession, user: User) -> MeResponse:
+    providers = await _linked_providers(db, user.id)
     return MeResponse(
         id=user.id,
         nickname=user.nickname,
@@ -83,7 +86,50 @@ async def _me_full(db: AsyncSession, user: User) -> MeResponse:
         system_role=user.system_role,
         has_rooms=await _has_rooms(db, user.id),
         is_any_admin=await is_any_admin(db, user),
-        vk_linked=await _vk_linked(db, user.id),
+        vk_linked="vk" in providers,
+        linked_providers=providers,
+    )
+
+
+async def _link_oauth(
+    db: AsyncSession,
+    user: User,
+    provider: str,
+    provider_user_id: str,
+    access_token: str | None = None,
+    refresh_token: str | None = None,
+) -> None:
+    """Привязать OAuth-идентичность к УЖЕ вошедшему пользователю. Если она уже
+    привязана к другому пользователю — 409. Идемпотентно для своей же привязки."""
+    acc = await db.scalar(
+        select(OAuthAccount).where(
+            OAuthAccount.provider == provider,
+            OAuthAccount.provider_user_id == provider_user_id,
+        )
+    )
+    if acc:
+        if acc.user_id != user.id:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "Этот аккаунт уже привязан к другому пользователю",
+            )
+        return
+    db.add(
+        OAuthAccount(
+            user_id=user.id,
+            provider=provider,
+            provider_user_id=provider_user_id,
+            access_token_enc=encrypt_token(access_token),
+            refresh_token_enc=encrypt_token(refresh_token),
+        )
+    )
+    await audit.log_event(
+        db,
+        "account_linked",
+        actor_id=user.id,
+        actor_nickname=user.nickname,
+        target_id=user.id,
+        details={"provider": provider},
     )
 
 
@@ -170,6 +216,15 @@ async def yandex_login():
     return RedirectResponse(yandex.build_authorize_url(state))
 
 
+@router.post("/link/yandex")
+async def link_yandex_url(user: User = Depends(get_current_user)):
+    """URL авторизации Яндекса для ПРИВЯЗКИ к текущему аккаунту (в state —
+    маркер link:{user_id}, который распознаёт callback)."""
+    state = secrets.token_urlsafe(24)
+    await redis_client.setex(STATE_PREFIX + state, 600, f"link:{user.id}")
+    return {"url": yandex.build_authorize_url(state)}
+
+
 @router.get("/yandex/callback")
 async def yandex_callback(
     code: str,
@@ -177,13 +232,39 @@ async def yandex_callback(
     response: Response,
     db: AsyncSession = Depends(get_db),
 ):
-    # Single-use CSRF state.
-    if not await redis_client.get(STATE_PREFIX + state):
+    # Single-use CSRF state; значение "1" — вход, "link:{uid}" — привязка.
+    state_val = await redis_client.get(STATE_PREFIX + state)
+    if not state_val:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid state")
     await redis_client.delete(STATE_PREFIX + state)
+    if isinstance(state_val, bytes):
+        state_val = state_val.decode()
 
     token_data = await yandex.exchange_code(code)
     profile = await yandex.fetch_profile(token_data["access_token"])
+
+    frontend = settings.FRONTEND_URL.rstrip("/")
+    if state_val.startswith("link:"):
+        # Привязка к существующему пользователю.
+        try:
+            link_user = await db.get(User, uuid.UUID(state_val.split(":", 1)[1]))
+        except (ValueError, IndexError):
+            link_user = None
+        if not link_user:
+            return RedirectResponse(f"{frontend}/profile?link_error=1")
+        try:
+            await _link_oauth(
+                db,
+                link_user,
+                "yandex",
+                profile["provider_user_id"],
+                access_token=token_data.get("access_token"),
+                refresh_token=token_data.get("refresh_token"),
+            )
+        except HTTPException:
+            return RedirectResponse(f"{frontend}/profile?link_error=taken")
+        await db.commit()
+        return RedirectResponse(f"{frontend}/profile?linked=yandex")
 
     user, is_new = await _upsert_oauth_user(
         db,
@@ -298,6 +379,22 @@ async def telegram_verify(
     access = await _issue_access(db, user)
     _set_refresh_cookie(response, user.id)
     return TokenResponse(access_token=access, is_new_user=is_new)
+
+
+@router.post("/link/telegram", response_model=MeResponse)
+async def link_telegram(
+    payload: TelegramVerifyRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Привязать Telegram к текущему аккаунту (данные виджета Telegram Login)."""
+    data = payload.model_dump(exclude_none=True)
+    if not telegram.verify_telegram_auth(data):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Telegram verification failed")
+    profile = telegram.extract_profile(data)
+    await _link_oauth(db, user, "telegram", profile["provider_user_id"])
+    await db.commit()
+    return await _me_full(db, user)
 
 
 # ---------------- Session ----------------

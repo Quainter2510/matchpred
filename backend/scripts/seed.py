@@ -52,8 +52,13 @@ async def upsert_matches(db) -> tuple[int, str]:
         )
         print(f"WARN: {msg}")
         return 0, msg
+    from app.services.sync import upsert_team
+
     created = 0
     for fx in fixtures:
+        # Инфо о командах — в справочник teams; из dict матча убираем.
+        for t in fx.pop("_teams", None) or []:
+            await upsert_team(db, t, fx.get("league_id"))
         existing = await db.scalar(
             select(Match).where(Match.api_football_id == fx["api_football_id"])
         )

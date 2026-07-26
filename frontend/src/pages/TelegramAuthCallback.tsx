@@ -7,11 +7,14 @@ import { useAuth } from "../store/auth";
 export default function TelegramAuthCallback() {
   const navigate = useNavigate();
   const loadMe = useAuth((s) => s.loadMe);
+  const setUser = useAuth((s) => s.setUser);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const token = params.get("token");
     const error = params.get("error");
+    // Режим привязки Telegram к текущему аккаунту (флаг ставит профиль).
+    const linkIntent = localStorage.getItem("tg_link_intent");
 
     // Legacy redirect-mode flow (backend callback) — kept as fallback
     if (error) {
@@ -42,6 +45,25 @@ export default function TelegramAuthCallback() {
       authData = JSON.parse(atob(base64));
     } catch {
       navigate("/login?error=telegram_auth_failed", { replace: true });
+      return;
+    }
+
+    // Привязка к текущему аккаунту (пользователь уже вошёл; токен восстановится
+    // из refresh-cookie интерсептором клиента).
+    if (linkIntent) {
+      localStorage.removeItem("tg_link_intent");
+      api
+        .linkTelegram(authData)
+        .then((me) => {
+          setUser(me);
+          navigate("/profile?linked=telegram", { replace: true });
+        })
+        .catch((e: any) => {
+          const taken = e.response?.status === 409;
+          navigate(`/profile?link_error=${taken ? "taken" : "1"}`, {
+            replace: true,
+          });
+        });
       return;
     }
 

@@ -60,7 +60,7 @@ TYPE_CONFIG: dict[str, dict] = {
     "rpl": {
         "league_id": RPL_LEAGUE_ID,
         "tour_anchor": _WED,
-        "special_kind": "leader",
+        "special_kind": "leader_scorer",
         "label": "Российская Премьер-лига",
     },
     "ucl": {
@@ -133,6 +133,13 @@ def tournament_match_conditions(room: Room) -> list:
     if room.ends_on is not None:
         conds.append(Match.match_date <= room.ends_on)
     return conds
+
+
+def special_deadline_at(room: Room):
+    """Срок подачи спецпрогноза: явно заданный админом или, если не задан, —
+    первый матч турнира. После него приём спецпрогнозов закрыт, а чужие выборы
+    раскрываются."""
+    return room.special_deadline or room.first_match_at
 
 
 def match_belongs(room: Room, match: Match) -> bool:

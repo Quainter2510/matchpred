@@ -8,6 +8,7 @@ export interface Me {
   has_rooms: boolean;
   is_any_admin: boolean;
   vk_linked: boolean;
+  linked_providers: string[];
 }
 
 export type TournamentType = "world_cup" | "rpl" | "ucl" | "custom";
@@ -46,6 +47,12 @@ export interface CustomLeague {
   label: string;
 }
 
+export interface TeamInfo {
+  name_en: string;
+  name_ru: string | null;
+  logo: string | null;
+}
+
 export interface RoomScoring {
   points_exact: number;
   points_diff: number;
@@ -65,6 +72,7 @@ export interface RoomDetail extends Room {
   starts_on: string | null;
   ends_on: string | null;
   special_result_team: string | null;
+  special_deadline: string | null;
 }
 
 export interface CreateTournamentBody {
@@ -330,6 +338,10 @@ export const api = {
     client
       .post<{ code: string; bot_url: string | null }>("/auth/vk/link-code")
       .then((x) => x.data),
+  linkYandex: () =>
+    client.post<{ url: string }>("/auth/link/yandex").then((x) => x.data),
+  linkTelegram: (data: Record<string, unknown>) =>
+    client.post<Me>("/auth/link/telegram", data).then((x) => x.data),
 
   // ---- rooms ----
   listRooms: (q?: string) =>
@@ -377,6 +389,8 @@ export const api = {
     client.patch<RoomScoring>(`${r(roomId)}/rules`, scoring).then((x) => x.data),
   updateRoomRulesText: (roomId: string, rules_text: string) =>
     client.patch(`${r(roomId)}/rules-text`, { rules_text }).then((x) => x.data),
+  setSpecialDeadline: (roomId: string, deadline: string | null) =>
+    client.patch(`${r(roomId)}/special-deadline`, { deadline }).then((x) => x.data),
 
   // room members (room admin)
   roomMembers: (roomId: string) =>
@@ -478,6 +492,9 @@ export const api = {
   // ---- player profile (room-scoped) ----
   playerProfile: (roomId: string, userId: string) =>
     client.get<PlayerProfile>(`${r(roomId)}/players/${userId}`).then((x) => x.data),
+
+  // ---- teams (справочник: рус. имя + логотип) ----
+  teams: () => client.get<TeamInfo[]>("/teams").then((x) => x.data),
 
   // ---- standings (room-scoped; данные глобальные) ----
   standings: (roomId: string) =>

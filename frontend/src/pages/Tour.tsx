@@ -7,17 +7,30 @@ import Flag from "../components/Flag";
 import MatchCard from "../components/MatchCard";
 import { useAuth } from "../store/auth";
 import { findCountry } from "../utils/countries";
+import { useTeamsMap } from "../utils/useTeams";
 import { formatDate, isPast } from "../utils/dates";
 import { classifyPrediction, HIT_BADGE, HIT_BG } from "../utils/scoring";
 
 // Команда флагом (с буквенным фолбэком), чтобы плотный список влезал на телефон.
 function TeamFlag({ team }: { team: string }) {
+  const teams = useTeamsMap();
   const c = findCountry(team);
-  return c ? (
-    <Flag code={c.code} title={team} />
-  ) : (
-    <span className="text-[10px] uppercase text-slate-500" title={team}>
-      {team.slice(0, 3)}
+  if (c) return <Flag code={c.code} title={c.ru} />;
+  const info = teams.get(team.trim().toLowerCase());
+  const name = info?.name_ru ?? team;
+  if (info?.logo)
+    return (
+      <img
+        src={info.logo}
+        alt=""
+        title={name}
+        loading="lazy"
+        className="inline-block h-4 w-4 object-contain"
+      />
+    );
+  return (
+    <span className="text-[10px] uppercase text-slate-500" title={name}>
+      {name.slice(0, 3)}
     </span>
   );
 }

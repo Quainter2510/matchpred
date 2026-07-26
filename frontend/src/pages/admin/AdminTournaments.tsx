@@ -243,16 +243,21 @@ export default function AdminTournaments() {
               ["points_outcome", "Исход"],
               [
                 "points_champion",
-                typeInfo?.special_kind === "leader" ? "Лидер лиги" : "Победитель / чемпион",
+                typeInfo?.special_kind === "leader" ||
+                typeInfo?.special_kind === "leader_scorer"
+                  ? "Лидер лиги"
+                  : typeInfo?.special_kind === "wc"
+                    ? "Чемпион"
+                    : "Победитель / чемпион",
               ],
               ["points_scorer", "Бомбардир"],
             ] as [keyof RoomScoring, string][]
           )
             .filter(([key]) => {
-              // Бомбардир — только у ЧМ; спецочки за команду — не у custom.
-              if (key === "points_scorer") return typeInfo?.special_kind === "wc";
-              if (key === "points_champion")
-                return typeInfo?.special_kind !== "none";
+              const sk = typeInfo?.special_kind;
+              // Бомбардир — у ЧМ и РПЛ (leader_scorer); спецочки за команду — не у custom.
+              if (key === "points_scorer") return sk === "wc" || sk === "leader_scorer";
+              if (key === "points_champion") return sk !== "none";
               return true;
             })
             .map(([key, label]) => (
