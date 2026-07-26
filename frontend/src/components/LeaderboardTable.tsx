@@ -73,15 +73,20 @@ export default function LeaderboardTable({
   entries,
   roomId,
   started = false,
+  specialsRevealed,
   specialKind = "wc",
 }: {
   entries: LeaderboardEntry[];
   roomId: string;
   started?: boolean;
+  // Раскрыты ли чужие спецпрогнозы — по СРОКУ спецпрогноза, а не по старту
+  // турнира. Если не передан — используем started (обратная совместимость).
+  specialsRevealed?: boolean;
   isAdmin?: boolean;
   specialKind?: string;
 }) {
   const me = useAuth((s) => s.user);
+  const revealed = specialsRevealed ?? started;
   // Колонка «участие подтверждено» нужна только до старта турнира — после
   // начала первого матча пропадает у всех (галочки остаются в админке комнаты).
   const showParticipation = !started;
@@ -166,12 +171,12 @@ export default function LeaderboardTable({
             )}
             {showChampion && (
               <td className="text-center">
-                <ChampionCell e={e} started={started} />
+                <ChampionCell e={e} started={revealed} />
               </td>
             )}
             {showScorer && (
               <td className="text-center">
-                <ScorerCell e={e} started={started} />
+                <ScorerCell e={e} started={revealed} />
               </td>
             )}
             <td className="text-center">{e.total_points}</td>

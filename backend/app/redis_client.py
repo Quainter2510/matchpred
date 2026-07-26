@@ -12,8 +12,11 @@ LEADERBOARD_CACHE_PREFIX = "leaderboard:v2:"
 LEADERBOARD_CACHE_TTL = 60
 
 
-def leaderboard_cache_key(room_id: uuid.UUID) -> str:
-    return f"{LEADERBOARD_CACHE_PREFIX}{room_id}"
+def leaderboard_cache_key(room_id: uuid.UUID, revealed: bool = False) -> str:
+    # Флаг раскрытия спецпрогнозов — часть ключа: до и после срока спецпрогноза
+    # это разные кэши, поэтому переход в момент дедлайна виден сразу, без ожидания
+    # истечения TTL.
+    return f"{LEADERBOARD_CACHE_PREFIX}{room_id}:{int(revealed)}"
 
 
 async def invalidate_leaderboard_cache(room_id: uuid.UUID | None = None) -> None:
@@ -22,7 +25,10 @@ async def invalidate_leaderboard_cache(room_id: uuid.UUID | None = None) -> None
     A match result scores all rooms, so the global form is used after scoring."""
     try:
         if room_id is not None:
-            await redis_client.delete(leaderboard_cache_key(room_id))
+            await redis_client.delete(
+                leaderboard_cache_key(room_id, False),
+                leaderboard_cache_key(room_id, True),
+            )
             return
         keys = [k async for k in redis_client.scan_iter(f"{LEADERBOARD_CACHE_PREFIX}*")]
         if keys:

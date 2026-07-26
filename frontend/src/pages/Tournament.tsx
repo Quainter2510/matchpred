@@ -232,6 +232,9 @@ export default function Tournament() {
     room.data?.special_kind !== "none" &&
     !!specialDeadline &&
     !isPast(specialDeadline);
+  // Чужие спецпрогнозы раскрываются в таблице после срока спецпрогноза
+  // (не после старта турнира).
+  const specialsRevealed = !!specialDeadline && isPast(specialDeadline);
   // Активная вкладка живёт в URL (?tab=…), чтобы «назад» из тура/матча
   // возвращал на ту же вкладку, а не на таблицу по умолчанию.
   const [searchParams, setSearchParams] = useSearchParams();
@@ -366,6 +369,7 @@ export default function Tournament() {
               entries={lb.data || []}
               roomId={roomId!}
               started={started}
+              specialsRevealed={specialsRevealed}
               isAdmin={isAdmin}
               specialKind={room.data?.special_kind}
             />

@@ -85,7 +85,7 @@ async def _compute(
 
 
 async def _get_leaderboard(db: AsyncSession, room_id, started: bool) -> list[dict]:
-    key = leaderboard_cache_key(room_id)
+    key = leaderboard_cache_key(room_id, started)
     try:
         cached = await redis_client.get(key)
         if cached:
