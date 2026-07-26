@@ -249,7 +249,12 @@ async def _table(db: AsyncSession, provider: str, ext_id: str, user: User) -> Re
 
 # ---------------- tour results ----------------
 def _day_buttons(days, action: str, room) -> list[list[Button]]:
-    return [[Button(_fmt_tour(room, d), {"a": action, "d": d.isoformat()})] for d in days]
+    # days: список (дата тура, подпись «N-й тур» | None). Подпись по номеру,
+    # иначе — по дате.
+    return [
+        [Button(label or _fmt_tour(room, d), {"a": action, "d": d.isoformat()})]
+        for d, label in days
+    ]
 
 
 async def _tour_days(db: AsyncSession, provider: str, ext_id: str, user: User) -> Reply:
@@ -278,7 +283,8 @@ async def _tour_results(
     players = await queries.tour_player_points(db, room, day)
     matches = await queries.tour_matches_for_user(db, room, user.id, day)
 
-    lines = [f"📅 {_fmt_tour(room, day)} — итоги ({room.name})", ""]
+    label = await queries.tour_label(db, room, day) or _fmt_tour(room, day)
+    lines = [f"📅 {label} — итоги ({room.name})", ""]
     if players:
         pts_w = max(len(str(p)) for _, p in players)
         for nick, pts in players[:50]:

@@ -46,7 +46,7 @@ from app.services.tournament import (
     tournament_match_conditions,
     type_config,
 )
-from app.services.tours import tour_key
+from app.services.tours import round_label, tour_key
 
 # Room-scoped match reads (attach the caller's prediction + the room's
 # multiplier). Multipliers are now per-room, set by the room admin.
@@ -197,9 +197,11 @@ async def match_days(
                 "mult_max": mult,
                 "finished": 0,
                 "points": 0,
+                "rounds": set(),
             },
         )
         d["count"] += 1
+        d["rounds"].add(round_label(m.round))
         d["mult_min"] = min(d["mult_min"], mult)
         d["mult_max"] = max(d["mult_max"], mult)
         pred = my_preds.get(m.id)
@@ -230,9 +232,13 @@ async def match_days(
                 for (uid, day), n in per_user_day.items()
                 if day == date and n >= d["count"]
             )
+        # Подпись тура по номеру (лиги) — если у всех матчей дня один номер тура.
+        round_labels = {r for r in d["rounds"] if r}
+        label = next(iter(round_labels)) if len(round_labels) == 1 else None
         out.append(
             MatchDay(
                 date=date,
+                label=label,
                 match_count=d["count"],
                 my_predictions_count=d["mine"],
                 first_kickoff_at=d["first"],

@@ -488,7 +488,11 @@ function ScorerResult({ roomId }: { roomId: string }) {
         только в этом соревновании. Победитель турнира начисляется автоматически
         при пересчёте после финала.
       </p>
-      <PlayerSearch value={scorer} onSelect={(id, name) => setScorer({ id, name })} />
+      <PlayerSearch
+        value={scorer}
+        onSelect={(id, name) => setScorer({ id, name })}
+        roomId={roomId}
+      />
       <button
         className="btn-primary"
         disabled={!scorer.id || award.isPending}

@@ -140,6 +140,7 @@ export default function SpecialPredictionCard({
             disabled={locked}
             onSelect={(id, name) => setScorer({ id, name })}
             highlight={scorerSaved}
+            roomId={roomId}
           />
         </div>
       )}

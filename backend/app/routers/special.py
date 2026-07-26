@@ -21,6 +21,7 @@ from app.schemas.special import (
     SpecialPredictionUpdate,
 )
 from app.services import audit, football_api
+from app.services.players_ru import ru_player
 from app.services.recalc import score_leader, score_top_scorer
 from app.services.simulation import SimContext, get_sim
 from app.services.tournament import special_deadline_at
@@ -206,6 +207,28 @@ async def leader_result(
     )
     await db.commit()
     return {"awarded": awarded}
+
+
+@router.get("/scorer-search", response_model=list[PlayerSearchItem])
+async def scorer_search(
+    q: str = Query(min_length=3),
+    ctx: RoomContext = Depends(require_room_member),
+):
+    """Поиск бомбардира с учётом турнира: для лиговых турниров (РПЛ) — только
+    футболисты клубов этой лиги, имена по-русски (курируемый словарь, фолбэк —
+    латиница). Для ЧМ — глобальный поиск с кураторским списком сборников."""
+    is_wc = ctx.room.special_kind == "wc"
+    league_id, season = ctx.room.league_id, ctx.room.season
+    try:
+        if not is_wc and league_id and season:
+            results = await football_api.search_league_players(q, league_id, season)
+            for r in results:
+                r["name"] = ru_player(r["name"]) or r["name"]
+        else:
+            results = await football_api.search_players(q)
+    except Exception:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Player search unavailable")
+    return [PlayerSearchItem(**r) for r in results if r.get("api_id")]
 
 
 @players_router.get("/players/search", response_model=list[PlayerSearchItem])

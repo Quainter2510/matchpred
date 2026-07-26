@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Match, Prediction, Room, RoomMember, User
 from app.services.tournament import tournament_match_conditions
+from app.services.tours import round_label
 
 
 async def active_rooms(db: AsyncSession, user_id) -> list[Room]:
@@ -39,14 +40,13 @@ async def leaderboard(db: AsyncSession, room_id) -> list[tuple[str, int]]:
 
 async def days_with_matches(
     db: AsyncSession, room: Room, start: datetime, end: datetime
-) -> list[date]:
-    """Даты туров (match_date) турнира, у которых есть матч с kickoff в окне
-    [start, end]. Окно берётся по `kickoff_at`, а не по `match_date`: у недельных
-    турниров match_date — начало недели (может быть на несколько дней раньше
-    «сегодня»), поэтому фильтр по самой дате тура терял бы текущий тур."""
+) -> list[tuple[date, str | None]]:
+    """Туры (match_date + подпись «N-й тур») турнира с матчем в окне по kickoff
+    [start, end]. Окно по `kickoff_at`: у недельных турниров match_date — начало
+    недели, поэтому фильтр по самой дате тура терял бы текущий тур."""
     rows = (
         await db.execute(
-            select(Match.match_date)
+            select(Match.match_date, func.min(Match.round))
             .where(
                 Match.kickoff_at >= start,
                 Match.kickoff_at <= end,
@@ -56,7 +56,17 @@ async def days_with_matches(
             .order_by(Match.match_date)
         )
     ).all()
-    return [r[0] for r in rows]
+    return [(d, round_label(r)) for d, r in rows]
+
+
+async def tour_label(db: AsyncSession, room: Room, day: date) -> str | None:
+    """Подпись тура («N-й тур») по дате тура — для заголовков в боте."""
+    r = await db.scalar(
+        select(func.min(Match.round)).where(
+            Match.match_date == day, *tournament_match_conditions(room)
+        )
+    )
+    return round_label(r)
 
 
 async def tour_player_points(

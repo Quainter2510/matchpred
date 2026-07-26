@@ -19,7 +19,23 @@ UTC-времени начала на −7 часов и взятием кале�
 """
 from __future__ import annotations
 
+import re
 from datetime import date, datetime, timedelta, timezone
+
+# Номер тура из сырого `round` API: "Regular Season - 5", "League Phase - 3",
+# "Matchday 7" → номер. Плей-офф ("Round of 16", "Final") сюда НЕ попадают.
+_REGULAR_ROUND_RE = re.compile(
+    r"(?:regular season|league phase|matchday|tour)\D*(\d+)", re.I
+)
+
+
+def round_label(round_str: str | None) -> str | None:
+    """«N-й тур» из сырого round лиги; None для нерегулярных стадий (плей-офф,
+    группы) — тогда UI показывает дату."""
+    if not round_str:
+        return None
+    m = _REGULAR_ROUND_RE.search(round_str)
+    return f"{int(m.group(1))}-й тур" if m else None
 
 # Граница тура: 10:00 по Москве (UTC+3).
 TOUR_BOUNDARY_HOUR_MSK = 10

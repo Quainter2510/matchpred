@@ -388,6 +388,33 @@ _POSITION_RANK = {"Attacker": 0, "Midfielder": 1, "Defender": 2, "Goalkeeper": 3
 _SEARCH_LIMIT = 20
 
 
+async def search_league_players(
+    query: str, league_id: int, season: int
+) -> list[dict]:
+    """Поиск игроков ТОЛЬКО в рамках лиги+сезона (клубы этой лиги). Для
+    спецпрогноза бомбардира лигового турнира (РПЛ) — чтобы предлагались только
+    футболисты российских клубов. Требует загруженных составов (в сезоне есть)."""
+    data = await _get(
+        "/players",
+        {"league": league_id, "season": season, "search": query},
+    )
+    out: list[dict] = []
+    for item in data.get("response", []):
+        player = item.get("player", {})
+        pid = player.get("id")
+        if not pid:
+            continue
+        name = player.get("name") or " ".join(
+            filter(None, [player.get("firstname"), player.get("lastname")])
+        )
+        stats = (item.get("statistics") or [{}])[0]
+        team = (stats.get("team") or {}).get("name")
+        out.append(
+            {"api_id": pid, "name": name, "team": team, "photo": player.get("photo")}
+        )
+    return out[:_SEARCH_LIMIT]
+
+
 async def search_players(query: str) -> list[dict]:
     """Player autocomplete for the top-scorer special prediction.
 

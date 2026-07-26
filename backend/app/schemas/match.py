@@ -36,6 +36,8 @@ class MatchOut(BaseModel):
 
 class MatchDay(BaseModel):
     date: date
+    # Подпись тура: «N-й тур» для лиг (из round), иначе null → фронт покажет дату.
+    label: str | None = None
     match_count: int
     my_predictions_count: int
     first_kickoff_at: datetime

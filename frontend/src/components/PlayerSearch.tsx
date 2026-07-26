@@ -14,9 +14,11 @@ interface Props {
   disabled?: boolean;
   /** Подсветить поле зелёным (выбор сохранён). */
   highlight?: boolean;
+  /** Если задан — поиск в рамках турнира (только клубы его лиги, рус. имена). */
+  roomId?: string;
 }
 
-export default function PlayerSearch({ value, onSelect, disabled, highlight }: Props) {
+export default function PlayerSearch({ value, onSelect, disabled, highlight, roomId }: Props) {
   const [q, setQ] = useState(value.name || "");
   const [results, setResults] = useState<PlayerItem[]>([]);
   const [open, setOpen] = useState(false);
@@ -38,7 +40,9 @@ export default function PlayerSearch({ value, onSelect, disabled, highlight }: P
     const t = setTimeout(async () => {
       setLoading(true);
       try {
-        const r = (await api.searchPlayers(q)) as PlayerItem[];
+        const r = (await (roomId
+          ? api.scorerSearch(roomId, q)
+          : api.searchPlayers(q))) as PlayerItem[];
         setResults(r);
         setOpen(true);
       } catch {
@@ -48,7 +52,7 @@ export default function PlayerSearch({ value, onSelect, disabled, highlight }: P
       }
     }, 350);
     return () => clearTimeout(t);
-  }, [q, disabled, value.name]);
+  }, [q, disabled, value.name, roomId]);
 
   return (
     <div className="relative">

@@ -88,6 +88,7 @@ export interface CreateTournamentBody {
 
 export interface MatchDay {
   date: string;
+  label: string | null;
   match_count: number;
   my_predictions_count: number;
   first_kickoff_at: string;
@@ -488,6 +489,11 @@ export const api = {
     client.get(`${r(roomId)}/special-prediction/all`).then((x) => x.data),
   searchPlayers: (q: string) =>
     client.get("/players/search", { params: { q } }).then((x) => x.data),
+  // Поиск бомбардира в рамках турнира (только клубы его лиги, рус. имена).
+  scorerSearch: (roomId: string, q: string) =>
+    client
+      .get(`${r(roomId)}/special-prediction/scorer-search`, { params: { q } })
+      .then((x) => x.data),
 
   // ---- player profile (room-scoped) ----
   playerProfile: (roomId: string, userId: string) =>

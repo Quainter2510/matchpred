@@ -10,11 +10,31 @@ import SpecialPredictionCard from "./SpecialPredictionCard";
 import { useAuth } from "../store/auth";
 import { useViewAs } from "../store/viewAs";
 import { findCountry } from "../utils/countries";
+import { useTeamsMap } from "../utils/useTeams";
 import { formatDate, isPast, nowMs } from "../utils/dates";
 
 // Ссылки на все начавшиеся матчи (флаги + счёт) над вкладками: самый свежий
 // слева, дальше листается вправо. На телефоне — свайпом, в браузере — кнопками
 // по краям. Скроллбар скрыт. Данные из standings (общий кэш с вкладкой ЧМ).
+// Значок команды в ленте: флаг (сборные) или логотип клуба.
+function TeamBadge({ team }: { team: string }) {
+  const teams = useTeamsMap();
+  const c = findCountry(team);
+  if (c) return <Flag code={c.code} title={c.ru} />;
+  const info = teams.get(team.trim().toLowerCase());
+  if (info?.logo)
+    return (
+      <img
+        src={info.logo}
+        alt=""
+        title={info.name_ru ?? team}
+        loading="lazy"
+        className="inline-block h-4 w-4 object-contain"
+      />
+    );
+  return null;
+}
+
 function RecentResults({ roomId }: { roomId: string }) {
   const { data } = useQuery({
     queryKey: ["standings", roomId],
@@ -76,8 +96,6 @@ function RecentResults({ roomId }: { roomId: string }) {
         className="flex items-center gap-2 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {recent.map((m) => {
-          const hc = findCountry(m.home_team);
-          const ac = findCountry(m.away_team);
           const live = m.status === "live";
           const score =
             m.home_score != null && m.away_score != null
@@ -90,13 +108,13 @@ function RecentResults({ roomId }: { roomId: string }) {
               title={`${m.home_team} ${score} ${m.away_team}`}
               className="inline-flex shrink-0 items-center gap-1 rounded-full border border-slate-200 px-2 py-0.5 text-xs hover:bg-slate-50"
             >
-              {hc ? <Flag code={hc.code} title={m.home_team} /> : null}
+              <TeamBadge team={m.home_team} />
               <span
                 className={`font-semibold tabular-nums ${live ? "text-red-600" : ""}`}
               >
                 {score}
               </span>
-              {ac ? <Flag code={ac.code} title={m.away_team} /> : null}
+              <TeamBadge team={m.away_team} />
             </Link>
           );
         })}
@@ -397,9 +415,14 @@ export default function Tournament() {
                     >
                       <span className="flex min-w-0 flex-col">
                         <span className="flex items-center gap-1.5 font-medium">
-                          {formatDate(d.date)}
+                          {d.label || formatDate(d.date)}
                           {d.multiplier != null && <MultiplierBadge value={d.multiplier} />}
                         </span>
+                        {d.label && (
+                          <span className="text-xs text-slate-400">
+                            {formatDate(d.date)}
+                          </span>
+                        )}
                         <span className="text-xs text-slate-500">
                           {d.my_predictions_count}/{d.match_count} прогнозов
                         </span>
