@@ -10,6 +10,7 @@
   API) — ранее начисленные очки снимаются и начисляются заново.
 """
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Match, Room, Team, TournamentMatch
@@ -19,26 +20,30 @@ from app.services.tournament import WORLD_CUP_LEAGUE_ID
 
 
 async def upsert_team(db: AsyncSession, info: dict, league_id: int | None) -> None:
-    """Апсерт справочника команд (id/имя/logo) из данных фикстуры."""
+    """Апсерт справочника команд (id/имя/logo) из фикстуры. Атомарный
+    INSERT ... ON CONFLICT DO UPDATE: одна команда встречается во многих матчах
+    лиги, поэтому наивный get-затем-add давал бы duplicate key (при autoflush=off
+    несколько одинаковых Team в сессии). logo_local НЕ трогаем — он ставится
+    после скачивания логотипа."""
     tid = info.get("id")
     if not tid:
         return
-    existing = await db.get(Team, tid)
-    if existing:
-        existing.name_en = info.get("name") or existing.name_en
-        if league_id is not None:
-            existing.league_id = league_id
-        if info.get("logo"):
-            existing.logo_url = info["logo"]
-    else:
-        db.add(
-            Team(
-                api_football_id=tid,
-                name_en=info.get("name") or "",
-                league_id=league_id,
-                logo_url=info.get("logo"),
-            )
-        )
+    name = info.get("name") or ""
+    stmt = pg_insert(Team).values(
+        api_football_id=tid,
+        name_en=name,
+        league_id=league_id,
+        logo_url=info.get("logo"),
+    )
+    set_: dict = {"name_en": stmt.excluded.name_en}
+    if league_id is not None:
+        set_["league_id"] = stmt.excluded.league_id
+    if info.get("logo"):
+        set_["logo_url"] = stmt.excluded.logo_url
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["api_football_id"], set_=set_
+    )
+    await db.execute(stmt)
 
 
 async def active_league_seasons(db: AsyncSession) -> list[tuple[int, int]]:
