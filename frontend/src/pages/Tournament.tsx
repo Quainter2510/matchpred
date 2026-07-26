@@ -205,6 +205,15 @@ export default function Tournament() {
   const isAdmin = (me?.system_role === "superadmin" && !asPlayer) || isRoomAdmin;
   const archived = room.data && !room.data.is_active;
   const started = !!room.data?.first_match_at && isPast(room.data.first_match_at);
+  // Приём спецпрогноза открыт, пока не истёк его срок (special_deadline, если
+  // задан админом, иначе — первый матч турнира). Это отдельно от старта
+  // турнира: админ может продлить срок и после начала матчей.
+  const specialDeadline =
+    room.data?.special_deadline || room.data?.first_match_at;
+  const specialOpen =
+    room.data?.special_kind !== "none" &&
+    !!specialDeadline &&
+    !isPast(specialDeadline);
   // Активная вкладка живёт в URL (?tab=…), чтобы «назад» из тура/матча
   // возвращал на ту же вкладку, а не на таблицу по умолчанию.
   const [searchParams, setSearchParams] = useSearchParams();
@@ -356,8 +365,9 @@ export default function Tournament() {
 
       {tab === "predictions" && (
         <div className="space-y-6">
-          {/* Спецпрогноз доступен только до старта турнира. */}
-          {!started && (
+          {/* Спецпрогноз доступен, пока не истёк его срок (может быть продлён
+              админом и после старта турнира). */}
+          {specialOpen && (
             <SpecialPredictionCard
               roomId={roomId!}
               specialKind={room.data?.special_kind}

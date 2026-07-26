@@ -75,11 +75,23 @@ export default function AdminMatches() {
   });
   const sync = useMutation({
     mutationFn: api.sync,
-    onSuccess: (r) => {
-      alert(`Синхронизировано. ${JSON.stringify(r)}`);
+    onSuccess: (r: any) => {
+      const errs: string[] = r?.errors || [];
+      const base =
+        `Готово. Матчи: +${r?.created ?? 0} / ~${r?.updated ?? 0}. ` +
+        `Логотипы: ${r?.logos ?? 0}. Бомбардиры: ${r?.top_scorers ?? 0}.`;
+      alert(
+        errs.length
+          ? `${base}\n\nОшибки по лигам (проверьте доступность лиги/сезона в вашем тарифе API-Football):\n• ${errs.join("\n• ")}`
+          : base
+      );
       qc.invalidateQueries({ queryKey: ["admin-matches"] });
     },
-    onError: () => alert("Ошибка синхронизации (проверьте API-ключ)"),
+    onError: (e: any) =>
+      alert(
+        "Синхронизация не удалась: " +
+          (e.response?.data?.detail || "проверьте API-ключ API-Football")
+      ),
   });
 
   return (

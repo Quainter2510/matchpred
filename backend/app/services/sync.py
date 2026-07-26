@@ -88,17 +88,21 @@ async def sync_league(db: AsyncSession, league_id: int, season: int) -> dict:
 
 async def fetch_and_apply_all(db: AsyncSession, *, with_groups: bool = True) -> dict:
     """Синхронизировать матчи по всем активным (league_id, season). Буквы групп
-    (/standings) тянутся только для ЧМ (групповой этап). Возвращает суммарные
-    счётчики. Не коммитит — транзакцией владеет вызывающий."""
-    total = {"created": 0, "updated": 0, "rescored": 0}
+    (/standings) тянутся только для ЧМ. Устойчиво к сбоям: ошибка одной лиги
+    (неверный сезон/недоступная лига/лимит/токен) не прерывает остальные —
+    собирается в `errors`. Не коммитит — транзакцией владеет вызывающий."""
+    total: dict = {"created": 0, "updated": 0, "rescored": 0, "errors": []}
     for league_id, season in await active_league_seasons(db):
         use_groups = with_groups and league_id == WORLD_CUP_LEAGUE_ID
-        fixtures = await football_api.fetch_fixtures(
-            league_id, season, with_groups=use_groups
-        )
-        stats = await apply_fixtures(db, fixtures)
-        for k in total:
-            total[k] += stats[k]
+        try:
+            fixtures = await football_api.fetch_fixtures(
+                league_id, season, with_groups=use_groups
+            )
+            stats = await apply_fixtures(db, fixtures)
+            for k in ("created", "updated", "rescored"):
+                total[k] += stats[k]
+        except Exception as exc:
+            total["errors"].append(f"лига {league_id}/{season}: {exc}")
     return total
 
 
