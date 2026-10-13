@@ -30,10 +30,10 @@ async def clear_state(provider: str, ext_id: str | int) -> None:
 
 
 # ---- account linking ----
-async def create_link_code(user_id) -> str:
+async def create_link_code(user_id, ttl: int = _LINK_TTL) -> str:
     """A short, single-use code the user pastes into the bot to link accounts."""
     code = secrets.token_hex(3).upper()  # 6 hex chars, e.g. "A3F9C1"
-    await redis_client.setex(f"{_LINK_PREFIX}{code}", _LINK_TTL, str(user_id))
+    await redis_client.setex(f"{_LINK_PREFIX}{code}", ttl, str(user_id))
     return code
 
 

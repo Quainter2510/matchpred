@@ -9,6 +9,7 @@ import ViewAsBanner from "./components/ViewAsBanner";
 import Login from "./pages/Login";
 import AuthCallback from "./pages/AuthCallback";
 import TelegramAuthCallback from "./pages/TelegramAuthCallback";
+import OneTimeLogin from "./pages/OneTimeLogin";
 import SetupProfile from "./pages/SetupProfile";
 import RoomsHub from "./pages/RoomsHub";
 import Tournament from "./pages/Tournament";
@@ -77,6 +78,7 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/auth/callback" element={<AuthCallback />} />
+      <Route path="/auth/one-time" element={<OneTimeLogin />} />
       <Route path="/telegram-auth" element={<TelegramAuthCallback />} />
       <Route path="/setup-profile" element={<SetupProfile />} />
 

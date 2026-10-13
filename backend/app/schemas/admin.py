@@ -13,6 +13,28 @@ class SyncLeagueRequest(BaseModel):
     season: int
 
 
+class AdminUserOut(BaseModel):
+    id: uuid.UUID
+    nickname: str
+    avatar_url: str | None = None
+    system_role: str
+    is_active: bool
+    created_at: datetime | None = None
+    providers: list[str] = []
+
+
+class LoginLinkOut(BaseModel):
+    url: str
+    expires_in: int  # секунд
+
+
+class VkLinkCodeOut(BaseModel):
+    code: str
+    bot_url: str | None = None
+    expires_in: int  # секунд
+    already_linked: bool = False
+
+
 class AuditLogOut(BaseModel):
     id: int
     created_at: datetime

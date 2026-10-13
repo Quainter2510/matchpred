@@ -372,6 +372,8 @@ export default function Tournament() {
               specialsRevealed={specialsRevealed}
               isAdmin={isAdmin}
               specialKind={room.data?.special_kind}
+              zoneTop={room.data?.zone_top}
+              zoneBottom={room.data?.zone_bottom}
             />
           )}
         </section>

@@ -9,11 +9,21 @@ from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_db
 from app.dependencies import require_superadmin
-from app.models import AuditLog, User
-from app.schemas.admin import AuditLogOut, SyncLeagueRequest, TransferRequest
+from app.models import AuditLog, OAuthAccount, User
+from app.schemas.admin import (
+    AdminUserOut,
+    AuditLogOut,
+    LoginLinkOut,
+    SyncLeagueRequest,
+    TransferRequest,
+    VkLinkCodeOut,
+)
 from app.services import audit
+from app.services.bot.state import create_link_code
+from app.services.login_links import LOGIN_LINK_TTL, create_login_token
 from app.services.logos import download_missing_logos
 from app.services.recalc import recalculate_all
 from app.services.sync import fetch_and_apply_all, sync_league
@@ -47,7 +57,14 @@ EVENT_LABELS_RU = {
     "api_sync": "Синхронизация с API",
     "nickname_changed": "Смена никнейма",
     "account_linked": "Привязан аккаунт",
+    "login_link_issued": "Выдана ссылка входа",
+    "login_link_used": "Вход по одноразовой ссылке",
+    "vk_link_code_issued": "Выдан код привязки VK",
 }
+
+# Код привязки VK, выданный суперадмином, передаётся лично — живёт дольше
+# обычного (10 минут из профиля).
+ADMIN_VK_CODE_TTL = 3600
 
 
 # ---------------- Sync & recalc (global; superadmin only) ----------------
@@ -150,6 +167,111 @@ async def transfer_superadmin(
     )
     await db.commit()
     return {"ok": True}
+
+
+# ---------------- Users: запасной вход и привязка VK (superadmin) ----------------
+@router.get("/admin/users", response_model=list[AdminUserOut])
+async def list_users(
+    q: str | None = None,
+    limit: int = Query(200, le=500),
+    user: User = Depends(require_superadmin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Все пользователи (поиск по никнейму) с привязанными провайдерами."""
+    stmt = select(User).order_by(User.nickname).limit(limit)
+    if q and q.strip():
+        stmt = stmt.where(User.nickname.ilike(f"%{q.strip()}%"))
+    users = (await db.execute(stmt)).scalars().all()
+    providers: dict[uuid.UUID, set[str]] = {}
+    if users:
+        rows = (
+            await db.execute(
+                select(OAuthAccount.user_id, OAuthAccount.provider).where(
+                    OAuthAccount.user_id.in_([u.id for u in users])
+                )
+            )
+        ).all()
+        for uid, provider in rows:
+            providers.setdefault(uid, set()).add(provider)
+    return [
+        AdminUserOut(
+            id=u.id,
+            nickname=u.nickname,
+            avatar_url=u.avatar_url,
+            system_role=u.system_role,
+            is_active=u.is_active,
+            created_at=u.created_at,
+            providers=sorted(providers.get(u.id, ())),
+        )
+        for u in users
+    ]
+
+
+async def _target_user(db: AsyncSession, uid: uuid.UUID) -> User:
+    target = await db.get(User, uid)
+    if not target:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+    if not target.is_active:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Пользователь отключён")
+    return target
+
+
+@router.post("/admin/users/{uid}/login-link", response_model=LoginLinkOut)
+async def issue_login_link(
+    uid: uuid.UUID,
+    user: User = Depends(require_superadmin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Одноразовая ссылка входа в аккаунт пользователя — суперадмин передаёт
+    её лично. Действует час, гасится при первом входе."""
+    target = await _target_user(db, uid)
+    token = await create_login_token(target.id)
+    await audit.log_event(
+        db,
+        "login_link_issued",
+        actor_id=user.id,
+        actor_nickname=user.nickname,
+        target_id=target.id,
+        details={"for_nickname": target.nickname},
+    )
+    await db.commit()
+    frontend = settings.FRONTEND_URL.rstrip("/")
+    return LoginLinkOut(
+        url=f"{frontend}/auth/one-time#token={token}", expires_in=LOGIN_LINK_TTL
+    )
+
+
+@router.post("/admin/users/{uid}/vk-link-code", response_model=VkLinkCodeOut)
+async def issue_vk_link_code(
+    uid: uuid.UUID,
+    user: User = Depends(require_superadmin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Код привязки VK-бота для пользователя — суперадмин передаёт его лично,
+    пользователь отправляет код боту. Действует час (обычный код из профиля —
+    10 минут), одноразовый."""
+    target = await _target_user(db, uid)
+    already = await db.scalar(
+        select(OAuthAccount.id).where(
+            OAuthAccount.user_id == target.id, OAuthAccount.provider == "vk"
+        )
+    )
+    code = await create_link_code(target.id, ttl=ADMIN_VK_CODE_TTL)
+    await audit.log_event(
+        db,
+        "vk_link_code_issued",
+        actor_id=user.id,
+        actor_nickname=user.nickname,
+        target_id=target.id,
+        details={"for_nickname": target.nickname},
+    )
+    await db.commit()
+    return VkLinkCodeOut(
+        code=code,
+        bot_url=f"https://vk.me/club{settings.VK_GROUP_ID}" if settings.VK_GROUP_ID else None,
+        expires_in=ADMIN_VK_CODE_TTL,
+        already_linked=already is not None,
+    )
 
 
 @router.get("/admin/audit-log", response_model=list[AuditLogOut])

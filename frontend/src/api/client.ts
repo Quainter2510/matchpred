@@ -87,6 +87,7 @@ client.interceptors.response.use(
         "/rooms",
         "/login",
         "/auth/callback",
+        "/auth/one-time",
         "/telegram-auth",
         "/setup-profile",
       ];

@@ -54,6 +54,15 @@ class RoomDetail(RoomSummary):
     ends_on: date | None = None
     special_result_team: str | None = None
     special_deadline: datetime | None = None
+    zone_top: int = 3
+    zone_bottom: int = 3
+
+
+class RoomZonesUpdate(BaseModel):
+    # Число «зелёных» (первых) и «красных» (последних) мест в таблице; 0 — зона
+    # выключена.
+    zone_top: int = Field(ge=0, le=100)
+    zone_bottom: int = Field(ge=0, le=100)
 
 
 class SpecialDeadlineUpdate(BaseModel):

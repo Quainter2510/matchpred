@@ -75,6 +75,8 @@ export default function LeaderboardTable({
   started = false,
   specialsRevealed,
   specialKind = "wc",
+  zoneTop = 3,
+  zoneBottom = 3,
 }: {
   entries: LeaderboardEntry[];
   roomId: string;
@@ -84,6 +86,9 @@ export default function LeaderboardTable({
   specialsRevealed?: boolean;
   isAdmin?: boolean;
   specialKind?: string;
+  // Число «зелёных» (первых) и «красных» (последних) мест.
+  zoneTop?: number;
+  zoneBottom?: number;
 }) {
   const me = useAuth((s) => s.user);
   const revealed = specialsRevealed ?? started;
@@ -130,15 +135,17 @@ export default function LeaderboardTable({
       <tbody>
         {entries.map((e, i) => {
           const isMe = e.user_id === me?.id;
-          // Призовая зона (топ-3) — зеленоватая, зона вылета (последние 3) —
-          // красноватая; своя строка внутри зоны — чуть насыщеннее.
+          // Призовая зона (первые zoneTop мест) — зеленоватая, зона вылета
+          // (последние zoneBottom) — красноватая; размеры задаёт админ турнира.
+          // Своя строка внутри зоны — чуть насыщеннее. При пересечении зон
+          // зелёная важнее.
           const n = entries.length;
           const zone =
-            i < 3
+            i < zoneTop
               ? isMe
                 ? "bg-emerald-100"
                 : "bg-emerald-50"
-              : n > 3 && i >= n - 3
+              : i >= n - zoneBottom
                 ? isMe
                   ? "bg-red-100"
                   : "bg-red-50"

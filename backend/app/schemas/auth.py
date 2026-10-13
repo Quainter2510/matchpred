@@ -18,6 +18,10 @@ class TelegramVerifyRequest(BaseModel):
     hash: str
 
 
+class OneTimeLoginRequest(BaseModel):
+    token: str = Field(min_length=10, max_length=200)
+
+
 class MeResponse(BaseModel):
     id: uuid.UUID
     nickname: str

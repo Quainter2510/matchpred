@@ -18,6 +18,7 @@ EVENT_TYPES = {
     "prediction_updated",
     "scores_recalculated",
     "scorer_result_set",
+    "leader_result_set",
     "champion_selected",
     "top_scorer_selected",
     "tournament_password_changed",
@@ -28,6 +29,10 @@ EVENT_TYPES = {
     "room_rules_changed",
     "api_sync",
     "nickname_changed",
+    "account_linked",
+    "login_link_issued",
+    "login_link_used",
+    "vk_link_code_issued",
 }
 
 

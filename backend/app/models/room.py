@@ -82,6 +82,11 @@ class Room(Base):
     points_champion: Mapped[int] = mapped_column(SmallInteger, nullable=False, server_default="10")
     points_scorer: Mapped[int] = mapped_column(SmallInteger, nullable=False, server_default="10")
 
+    # Подсветка таблицы лидеров: сколько первых мест «зелёные» (призовая зона)
+    # и сколько последних «красные». Чисто визуальная настройка админа комнаты.
+    zone_top: Mapped[int] = mapped_column(SmallInteger, nullable=False, server_default="3")
+    zone_bottom: Mapped[int] = mapped_column(SmallInteger, nullable=False, server_default="3")
+
 
 class RoomMember(Base):
     __tablename__ = "room_members"

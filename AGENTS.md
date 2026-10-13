@@ -98,6 +98,7 @@ backend/
 │       ├── sync.py            # применение фикстур API-Football к БД
 │       ├── scheduler.py       # APScheduler: тик 5 мин + ежедневный синк + бомбардиры 10:00 МСК
 │       ├── audit.py           # запись в audit_log
+│       ├── login_links.py     # одноразовые токены входа от суперадмина (Redis, GETDEL)
 │       ├── players_catalog.py # каталог бомбардиров (рус. поиск) + canonical_scorer_id (реальный↔кураторский ID)
 │       ├── top_scorers.py     # снимок бомбардиров в Redis (суточный) + догрузка
 │       │                      # голов выбранных участниками игроков вне топ-листа
@@ -107,7 +108,7 @@ backend/
 │           ├── state.py       # состояние диалога + одноразовые коды привязки
 │           ├── teams.py       # названия команд
 │           └── vk_client.py   # отправка сообщений в VK
-├── alembic/versions/          # 0001…0014 (rooms — 0004, room_match_multipliers — 0009, tournaments: типы+league_id/season — 0012, tournament_matches — 0013, teams+special_deadline+РПЛ leader_scorer — 0014)
+├── alembic/versions/          # 0001…0015 (room zones — 0015; rooms — 0004, room_match_multipliers — 0009, tournaments: типы+league_id/season — 0012, tournament_matches — 0013, teams+special_deadline+РПЛ leader_scorer — 0014)
 ├── tests/                     # test_scoring.py, test_auth.py, test_simulation.py (без БД)
 ├── scripts/
 │   ├── seed.py                # фикстуры из API-Football + первая комната
@@ -122,6 +123,7 @@ frontend/
 │   │   ├── Login.tsx              # кнопки OAuth: Telegram, Яндекс
 │   │   ├── AuthCallback.tsx       # приём access_token из fragment (Яндекс)
 │   │   ├── TelegramAuthCallback.tsx # redirect-режим Telegram (мобильные браузеры)
+│   │   ├── OneTimeLogin.tsx       # вход по одноразовой ссылке от суперадмина (/auth/one-time#token=…)
 │   │   ├── SetupProfile.tsx       # форма никнейма (первый вход)
 │   │   ├── RoomsHub.tsx           # публичное лобби: поиск/вступление/создание комнат
 │   │   ├── Tournament.tsx         # экран комнаты: таблица + спецпрогнозы + туры (вкладки)
@@ -137,6 +139,7 @@ frontend/
 │   │       ├── AdminSettings.tsx
 │   │       ├── AdminAuditLog.tsx  # журнал (только суперадмин) + CSV-экспорт
 │   │       ├── AdminSimulation.tsx # вкладка «Симуляция» (только суперадмин)
+│   │       ├── AdminUsers.tsx     # вкладка «Пользователи»: одноразовая ссылка входа, код привязки VK
 │   │       └── RoomAdmin.tsx      # управление комнатой: участники, пароль, регламент, коэффициенты, бомбардир
 │   ├── components/                # Sidebar, MatchCard, ScoreStepper, Countdown,
 │   │                              # LeaderboardTable, WcStandings (вкладка «ЧМ-2026» +
@@ -202,6 +205,7 @@ frontend/
 | special_kind | VARCHAR(20) | вид спецпрогноза: `wc│leader│leader_scorer│stage_or_champion│none` (по умолч. wc) |
 | special_result_team | VARCHAR(100) NULLABLE | вручную заданный ответ спецпрогноза (лидер лиги / победитель) |
 | special_deadline | TIMESTAMPTZ NULLABLE | настраиваемый админом срок подачи спецпрогноза (NULL = по первому матчу) |
+| zone_top / zone_bottom | SMALLINT DEFAULT 3 | сколько первых мест таблицы лидеров подсвечено зелёным и сколько последних — красным (0 = зона выключена); только подсветка, задаёт админ комнаты |
 
 ### room_members
 
@@ -336,7 +340,11 @@ frontend/
 `prediction_set`, `prediction_updated`, `scores_recalculated`, `scorer_result_set`,
 `leader_result_set`, `champion_selected`, `top_scorer_selected`, `room_created`,
 `room_deleted`, `room_joined`, `room_password_changed`, `room_rules_changed`,
-`api_sync`, `nickname_changed`, `account_linked`
+`api_sync`, `nickname_changed`, `account_linked`, `login_link_issued`,
+`login_link_used`, `vk_link_code_issued`
+
+> ⚠️ Новый `event_type` обязательно добавлять в `EVENT_TYPES` (`services/audit.py`):
+> `log_event` проверяет его через `assert`, неизвестный тип роняет запрос с 500.
 
 Индексы: `(created_at)`, `(event_type)`, `(actor_id)`.
 **Только запись** — никакого UPDATE/DELETE на этой таблице.
@@ -407,6 +415,7 @@ frontend/
 | GET | `/auth/telegram/oauth-redirect` | Pub | Redirect на oauth.telegram.org (мобильные браузеры) |
 | GET | `/auth/telegram/callback` | Pub | Redirect-режим виджета → `{FRONTEND_URL}/telegram-auth?token=…` |
 | POST | `/auth/telegram/verify` | Pub | Верификация данных виджета (HMAC) → `{access_token, is_new_user}` |
+| POST | `/auth/one-time` | Pub | `{token}` — вход по одноразовой ссылке от суперадмина → `{access_token}` + refresh-cookie; токен гасится. 400, если недействителен/использован/истёк |
 | POST | `/auth/refresh` | Pub | Новый access по refresh-cookie |
 | POST | `/auth/logout` | Pub | Удалить refresh-cookie |
 | GET | `/auth/me` | Auth | `{id, nickname, avatar_url, system_role, has_rooms, is_any_admin, vk_linked}` |
@@ -430,6 +439,7 @@ frontend/
 | PATCH | `/rooms/{id}/archive` | SA | `{archived}` — архивировать / восстановить |
 | PATCH | `/rooms/{id}/rules` | SA | Изменить очки `{points_exact, points_diff, points_outcome, points_champion, points_scorer}` |
 | PATCH | `/rooms/{id}/rules-text` | RAdmin | Регламент; пустая строка = сброс к стандартному описанию |
+| PATCH | `/rooms/{id}/zones` | RAdmin | `{zone_top, zone_bottom}` (0–100) — число «зелёных» и «красных» мест таблицы лидеров |
 | GET | `/rooms/{id}/members` | RAdmin | Участники с ролями и очками |
 | PATCH | `/rooms/{id}/members/{uid}/role` | RAdmin | `{role: 'admin'│'player'}` |
 | PATCH | `/rooms/{id}/members/{uid}/participation` | RAdmin | `{confirmed}` — галочка подтверждения |
@@ -515,6 +525,9 @@ frontend/
 | POST | `/admin/sync-league` | SA | `{league_id, season}` — синхронизировать одну лигу (для панели выбора матчей кастома) |
 | POST | `/admin/recalculate` | SA | Пересчитать все незакрытые очки (идемпотентно) |
 | POST | `/admin/superadmin/transfer` | SA | `{target_user_id}` — передать роль |
+| GET | `/admin/users?q=` | SA | Все пользователи (поиск по никнейму) `[{id, nickname, avatar_url, system_role, is_active, created_at, providers}]` |
+| POST | `/admin/users/{uid}/login-link` | SA | Одноразовая ссылка входа в аккаунт пользователя → `{url, expires_in}`; час, гасится при входе (`services/login_links.py`, Redis). Суперадмин передаёт её лично |
+| POST | `/admin/users/{uid}/vk-link-code` | SA | Код привязки VK-бота для пользователя → `{code, bot_url, expires_in, already_linked}`; час, одноразовый |
 | GET | `/admin/audit-log` | SA | `?event_type=&actor_id=&limit=50(≤200)&offset=0`, сортировка `created_at DESC` |
 | GET | `/admin/audit-log/export` | SA | Те же фильтры → CSV (UTF-8 BOM, `;`-разделитель) |
 
@@ -610,7 +623,7 @@ read-эндпоинты комнат (`matches`, `predictions`, `special-predict
 
 Результат матча — глобальный факт: один ввод счёта начисляет очки **во всех активных комнатах**, каждая по своим правилам. Архивные комнаты заморожены (не начисляется и не снимается).
 
-- `score_match` — начисляет по прогнозам с `points_awarded IS NULL` (идемпотентно), коэффициент берёт из `room_match_multipliers` по комнате. Только для `status='finished'` — у live-матчей в тех же колонках текущий счёт.
+- `score_match` — начисляет по прогнозам с `points_awarded IS NULL` (идемпотентно), коэффициент берёт из `room_match_multipliers` по комнате. Только для `status='finished'` — у live-матчей в тех же колонках текущий счёт. **Начинается с `db.flush()`**: сессия работает с `autoflush=False`, и без него выборки не увидели бы только что сброшенные очки / новый прогноз / новый коэффициент (пересчёт откладывался бы до следующего `recalculate_all`).
 - `rescore_match` — при исправлении уже введённого счёта (суперадмином): снимает прежние очки во всех активных комнатах, затем начисляет заново.
 - `rescore_match_in_room` — при смене коэффициента **админом комнаты** на завершённом матче: снимает и начисляет заново только в этой комнате.
 - `recalculate_all` — по всем завершённым матчам + чемпион. Вызывается из `/admin/recalculate`, `/admin/sync` и шедулера.
@@ -663,6 +676,13 @@ read-эндпоинты комнат (`matches`, `predictions`, `special-predict
 ### VK (только привязка, не вход)
 
 - Кнопка в профиле → `POST /auth/vk/link-code` → одноразовый код (Redis, 10 мин) → пользователь отправляет код VK-боту → запись в `oauth_accounts` с `provider='vk'`.
+- Суперадмин может выдать такой же код за пользователя (`POST /admin/users/{uid}/vk-link-code`, живёт час) и передать лично.
+
+### Одноразовая ссылка входа (запасной вход)
+
+- Для входа в существующий аккаунт, когда OAuth-провайдер недоступен. Глобальная панель → «Пользователи» → «Ссылка входа» → `POST /admin/users/{uid}/login-link`.
+- Ссылка `{FRONTEND_URL}/auth/one-time#token=…`: токен во fragment (не попадает в логи и Referer), живёт час в Redis (`loginlink:*`), гасится атомарно (`GETDEL`). Страница `OneTimeLogin.tsx` обменивает его POST-запросом `/auth/one-time` — превью ссылок в мессенджерах токен не сжигают.
+- Выдача и использование пишутся в журнал (`login_link_issued`, `login_link_used`). Ссылка = полный доступ к аккаунту: передавать только владельцу.
 
 ### JWT
 

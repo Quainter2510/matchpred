@@ -317,6 +317,69 @@ function SpecialDeadline({ room }: { room: RoomDetail }) {
   );
 }
 
+// Сколько первых мест таблицы лидеров подсвечивать зелёным и сколько
+// последних — красным. Только подсветка, на очки не влияет.
+function Zones({ room }: { room: RoomDetail }) {
+  const qc = useQueryClient();
+  const [top, setTop] = useState(room.zone_top);
+  const [bottom, setBottom] = useState(room.zone_bottom);
+  useEffect(() => {
+    setTop(room.zone_top);
+    setBottom(room.zone_bottom);
+  }, [room.zone_top, room.zone_bottom]);
+
+  const save = useMutation({
+    mutationFn: () => api.setRoomZones(room.id, top, bottom),
+    onSuccess: () => {
+      alert("Зоны таблицы обновлены");
+      qc.invalidateQueries({ queryKey: ["room", room.id] });
+    },
+    onError: (e: any) => alert(e.response?.data?.detail || "Ошибка"),
+  });
+  const num = (v: string) => Math.min(100, Math.max(0, parseInt(v || "0", 10) || 0));
+
+  return (
+    <section className="card max-w-lg space-y-3">
+      <h2 className="text-lg font-semibold">Зоны таблицы лидеров</h2>
+      <p className="text-sm text-slate-500">
+        Сколько первых мест подсвечивать зелёным и сколько последних — красным.
+        0 — зона выключена. Сейчас участников: {room.member_count}.
+      </p>
+      <label className="flex items-center justify-between gap-3">
+        <span className="text-sm">
+          <span className="mr-2 inline-block h-3 w-3 rounded-sm bg-emerald-200 align-middle" />
+          Зелёных мест (сверху)
+        </span>
+        <input
+          type="number"
+          min={0}
+          max={100}
+          className="w-24 rounded-lg border border-slate-300 px-2 py-1 text-center"
+          value={top}
+          onChange={(e) => setTop(num(e.target.value))}
+        />
+      </label>
+      <label className="flex items-center justify-between gap-3">
+        <span className="text-sm">
+          <span className="mr-2 inline-block h-3 w-3 rounded-sm bg-red-200 align-middle" />
+          Красных мест (снизу)
+        </span>
+        <input
+          type="number"
+          min={0}
+          max={100}
+          className="w-24 rounded-lg border border-slate-300 px-2 py-1 text-center"
+          value={bottom}
+          onChange={(e) => setBottom(num(e.target.value))}
+        />
+      </label>
+      <button className="btn-primary" onClick={() => save.mutate()} disabled={save.isPending}>
+        {save.isPending ? "Сохранение…" : "Сохранить зоны"}
+      </button>
+    </section>
+  );
+}
+
 function RoomPassword({ roomId }: { roomId: string }) {
   const [pwd, setPwd] = useState("");
   const change = useMutation({
@@ -785,6 +848,7 @@ export default function RoomAdmin() {
       {room.data && room.data.special_kind !== "none" && (
         <SpecialDeadline room={room.data} />
       )}
+      {room.data && <Zones room={room.data} />}
       <RoomPassword roomId={roomId!} />
       {room.data && <RulesText room={room.data} />}
       {isSuper && room.data && <ScoringRules room={room.data} />}

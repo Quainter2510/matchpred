@@ -5,10 +5,11 @@ import { useViewAs } from "../../store/viewAs";
 import AdminMatches from "./AdminMatches";
 import AdminSettings from "./AdminSettings";
 import AdminAuditLog from "./AdminAuditLog";
+import AdminUsers from "./AdminUsers";
 import AdminSimulation from "./AdminSimulation";
 import AdminTournaments from "./AdminTournaments";
 
-type Tab = "tournaments" | "matches" | "recalc" | "audit" | "sim";
+type Tab = "tournaments" | "matches" | "recalc" | "users" | "audit" | "sim";
 
 // Global admin panel (superadmin only): matches/results, recalculation, audit
 // log and simulation are shared across all rooms. Per-room settings —
@@ -28,6 +29,7 @@ export default function Admin() {
     { id: "tournaments", label: "Турниры", super: true },
     { id: "matches", label: "Матчи и результаты" },
     { id: "recalc", label: "Пересчёт" },
+    { id: "users", label: "Пользователи", super: true },
     { id: "audit", label: "Журнал", super: true },
     { id: "sim", label: "Симуляция", super: true },
   ];
@@ -82,6 +84,7 @@ export default function Admin() {
       {tab === "tournaments" && isSuper && <AdminTournaments />}
       {tab === "matches" && <AdminMatches />}
       {tab === "recalc" && <AdminSettings />}
+      {tab === "users" && isSuper && <AdminUsers />}
       {tab === "audit" && isSuper && <AdminAuditLog />}
       {tab === "sim" && isSuper && <AdminSimulation />}
     </div>

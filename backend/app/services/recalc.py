@@ -77,6 +77,12 @@ async def score_match(db: AsyncSession, match: Match) -> int:
     if match.home_score_ft is None or match.away_score_ft is None:
         return 0
 
+    # Сессия работает с autoflush=False, а выборки ниже фильтруют в БД. Без
+    # flush они не увидят изменений вызывающего: только что сброшенные очки
+    # (rescore_*, правка прогноза суперадмином), новый прогноз или новый
+    # коэффициент — и пересчёт молча откладывался бы до следующего recalc.
+    await db.flush()
+
     rooms = await _rooms_map(db)
     mults = await match_multipliers_map(db, match.id)
     rows = (

@@ -73,6 +73,19 @@ export interface RoomDetail extends Room {
   ends_on: string | null;
   special_result_team: string | null;
   special_deadline: string | null;
+  // Число «зелёных» (первых) и «красных» (последних) мест таблицы лидеров.
+  zone_top: number;
+  zone_bottom: number;
+}
+
+export interface AdminUser {
+  id: string;
+  nickname: string;
+  avatar_url: string | null;
+  system_role: string;
+  is_active: boolean;
+  created_at: string | null;
+  providers: string[];
 }
 
 export interface CreateTournamentBody {
@@ -343,6 +356,11 @@ export const api = {
     client.post<{ url: string }>("/auth/link/yandex").then((x) => x.data),
   linkTelegram: (data: Record<string, unknown>) =>
     client.post<Me>("/auth/link/telegram", data).then((x) => x.data),
+  // Вход по одноразовой ссылке, выданной суперадмином.
+  oneTimeLogin: (token: string) =>
+    client
+      .post<{ access_token: string }>("/auth/one-time", { token })
+      .then((x) => x.data),
 
   // ---- rooms ----
   listRooms: (q?: string) =>
@@ -392,6 +410,8 @@ export const api = {
     client.patch(`${r(roomId)}/rules-text`, { rules_text }).then((x) => x.data),
   setSpecialDeadline: (roomId: string, deadline: string | null) =>
     client.patch(`${r(roomId)}/special-deadline`, { deadline }).then((x) => x.data),
+  setRoomZones: (roomId: string, zone_top: number, zone_bottom: number) =>
+    client.patch(`${r(roomId)}/zones`, { zone_top, zone_bottom }).then((x) => x.data),
 
   // room members (room admin)
   roomMembers: (roomId: string) =>
@@ -454,7 +474,8 @@ export const api = {
     predictions: { match_id: string; home: number; away: number }[]
   ) =>
     client.post(`${r(roomId)}/predictions/batch`, { predictions }).then((x) => x.data),
-  // Суперадмин: прогноз за участника после дедлайна (пока счёт не введён).
+  // Суперадмин: прогноз за участника после дедлайна, в т.ч. на завершённом
+  // матче (очки пересчитываются сразу).
   adminSetPrediction: (
     roomId: string,
     matchId: string,
@@ -532,6 +553,23 @@ export const api = {
   recalculate: () => client.post("/admin/recalculate").then((x) => x.data),
   transferSuperadmin: (target_user_id: string) =>
     client.post("/admin/superadmin/transfer", { target_user_id }).then((x) => x.data),
+  adminUsers: (q?: string) =>
+    client
+      .get<AdminUser[]>("/admin/users", { params: q ? { q } : {} })
+      .then((x) => x.data),
+  adminLoginLink: (uid: string) =>
+    client
+      .post<{ url: string; expires_in: number }>(`/admin/users/${uid}/login-link`)
+      .then((x) => x.data),
+  adminVkLinkCode: (uid: string) =>
+    client
+      .post<{
+        code: string;
+        bot_url: string | null;
+        expires_in: number;
+        already_linked: boolean;
+      }>(`/admin/users/${uid}/vk-link-code`)
+      .then((x) => x.data),
   auditLog: (params: { event_type?: string; limit?: number; offset?: number }) =>
     client.get<AuditEntry[]>("/admin/audit-log", { params }).then((x) => x.data),
   exportAuditLog: (params: { event_type?: string }) =>

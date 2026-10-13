@@ -40,6 +40,7 @@ from app.schemas.room import (
     RoomRulesTextUpdate,
     RoomScoring,
     RoomSummary,
+    RoomZonesUpdate,
     RoundOut,
     SpecialDeadlineUpdate,
     TournamentTypeOut,
@@ -106,6 +107,8 @@ def _detail(room: Room, *, member_count: int, is_member: bool, my_role: str | No
         ends_on=room.ends_on,
         special_result_team=room.special_result_team,
         special_deadline=room.special_deadline,
+        zone_top=room.zone_top,
+        zone_bottom=room.zone_bottom,
     )
 
 
@@ -437,6 +440,32 @@ async def update_special_deadline(
     )
     await db.commit()
     return {"ok": True, "special_deadline": ctx.room.special_deadline}
+
+
+@router.patch("/{room_id}/zones")
+async def update_zones(
+    payload: RoomZonesUpdate,
+    ctx: RoomContext = Depends(require_room_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Число «зелёных» (первых) и «красных» (последних) мест в таблице лидеров
+    (админ комнаты). Только подсветка — на очки не влияет."""
+    ctx.room.zone_top = payload.zone_top
+    ctx.room.zone_bottom = payload.zone_bottom
+    await audit.log_event(
+        db,
+        "room_rules_changed",
+        actor_id=ctx.user.id,
+        actor_nickname=ctx.user.nickname,
+        target_id=ctx.room.id,
+        details={
+            "room": ctx.room.name,
+            "zone_top": payload.zone_top,
+            "zone_bottom": payload.zone_bottom,
+        },
+    )
+    await db.commit()
+    return {"ok": True, "zone_top": payload.zone_top, "zone_bottom": payload.zone_bottom}
 
 
 @router.patch("/{room_id}/rules-text")

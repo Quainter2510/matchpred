@@ -15,6 +15,7 @@ const EVENT_LABELS: Record<string, string> = {
   prediction_updated: "Изменён прогноз",
   scores_recalculated: "Пересчёт очков",
   scorer_result_set: "Итоговый бомбардир (начисление)",
+  leader_result_set: "Итоговый лидер лиги (начисление)",
   champion_selected: "Выбран чемпион",
   top_scorer_selected: "Выбран бомбардир",
   tournament_password_changed: "Смена пароля турнира",
@@ -25,6 +26,10 @@ const EVENT_LABELS: Record<string, string> = {
   room_rules_changed: "Изменён регламент",
   api_sync: "Синхронизация с API",
   nickname_changed: "Смена никнейма",
+  account_linked: "Привязан аккаунт",
+  login_link_issued: "Выдана ссылка входа",
+  login_link_used: "Вход по одноразовой ссылке",
+  vk_link_code_issued: "Выдан код привязки VK",
 };
 
 const EVENT_TYPES = ["", ...Object.keys(EVENT_LABELS)];

@@ -25,6 +25,7 @@ from app.models import OAuthAccount, RoomMember, User
 from app.redis_client import redis_client
 from app.schemas.auth import (
     MeResponse,
+    OneTimeLoginRequest,
     TelegramVerifyRequest,
     TokenResponse,
     UpdateNicknameRequest,
@@ -36,6 +37,7 @@ from app.security import (
     encrypt_token,
 )
 from app.services import audit
+from app.services.login_links import consume_login_token
 from app.services.oauth import telegram, yandex
 
 log = logging.getLogger("auth")
@@ -429,6 +431,41 @@ async def link_telegram(
     await _link_oauth(db, user, "telegram", profile["provider_user_id"])
     await db.commit()
     return await _me_full(db, user)
+
+
+# ---------------- One-time login link (выдаёт суперадмин) ----------------
+@router.post("/one-time", response_model=TokenResponse)
+async def one_time_login(
+    payload: OneTimeLoginRequest,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
+    """Вход по одноразовой ссылке, выданной суперадмином
+    (`POST /admin/users/{id}/login-link`). Токен гасится при использовании."""
+    user_id = await consume_login_token(payload.token)
+    user = None
+    if user_id:
+        try:
+            user = await db.get(User, uuid.UUID(user_id))
+        except ValueError:
+            user = None
+    if not user or not user.is_active:
+        # 400, а не 401: иначе фронтовый интерсептор попытался бы refresh.
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Ссылка недействительна, уже использована или истекла",
+        )
+    await audit.log_event(
+        db,
+        "login_link_used",
+        actor_id=user.id,
+        actor_nickname=user.nickname,
+        target_id=user.id,
+    )
+    await db.commit()
+    access = await _issue_access(db, user)
+    _set_refresh_cookie(response, user.id)
+    return TokenResponse(access_token=access)
 
 
 # ---------------- Session ----------------
