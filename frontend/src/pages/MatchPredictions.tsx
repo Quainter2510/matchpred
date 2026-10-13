@@ -125,7 +125,16 @@ export default function MatchPredictions() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const adminMode = useViewAs((s) => s.adminMode);
-  const isSuper = useAuth((s) => s.isSuperadmin()) && adminMode;
+  const setAdminMode = useViewAs((s) => s.setAdminMode);
+  const superUser = useAuth((s) => s.isSuperadmin());
+  const isSuper = superUser && adminMode;
+  // Правка чужих прогнозов доступна только в «Режиме суперадмина» (бэкенд в
+  // режиме игрока отвечает 403). По умолчанию режим выключен — даём включить
+  // его прямо здесь, иначе кнопки ✎ просто не видно.
+  const enableAdminMode = () => {
+    setAdminMode(true);
+    qc.invalidateQueries();
+  };
 
   // Суперадмин может проставить/поправить прогноз участника после дедлайна —
   // в том числе на завершённом матче (очки снимутся и начислятся заново).
@@ -178,6 +187,23 @@ export default function MatchPredictions() {
           {match.data.status === "live" && <LiveBadge />}
           <MultiplierBadge value={match.data.points_multiplier} large />
         </h1>
+      )}
+      {superUser && !adminMode && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50/60 px-3 py-2 text-sm">
+          <span>
+            Чтобы править прогнозы участников (в том числе после завершения
+            матча), включите режим суперадмина.
+          </span>
+          <button className="btn-ghost" onClick={enableAdminMode}>
+            ⚙️ Включить
+          </button>
+        </div>
+      )}
+      {isSuper && (
+        <p className="text-sm text-slate-500">
+          Кнопка ✎ рядом с прогнозом меняет его за участника — работает и после
+          завершения матча, очки пересчитываются сразу.
+        </p>
       )}
       <div className="card">
         {preds.isError ? (
