@@ -1,7 +1,9 @@
+import logging
 import secrets
 import uuid
 from urllib.parse import urlencode
 
+import httpx
 from fastapi import (
     APIRouter,
     Depends,
@@ -35,6 +37,8 @@ from app.security import (
 )
 from app.services import audit
 from app.services.oauth import telegram, yandex
+
+log = logging.getLogger("auth")
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -227,61 +231,91 @@ async def link_yandex_url(user: User = Depends(get_current_user)):
 
 @router.get("/yandex/callback")
 async def yandex_callback(
-    code: str,
-    state: str,
     response: Response,
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
+    """Сюда браузер приходит редиректом от Яндекса, поэтому любой сбой
+    возвращаем редиректом на фронт с понятной ошибкой, а не JSON/500;
+    причина пишется в лог бэкенда."""
+    frontend = settings.FRONTEND_URL.rstrip("/")
+
     # Single-use CSRF state; значение "1" — вход, "link:{uid}" — привязка.
-    state_val = await redis_client.get(STATE_PREFIX + state)
+    state_val = await redis_client.get(STATE_PREFIX + state) if state else None
     if not state_val:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid state")
+        # Нет state или он истёк (10 мин) / уже использован.
+        return RedirectResponse(f"{frontend}/login?error=yandex_expired")
     await redis_client.delete(STATE_PREFIX + state)
     if isinstance(state_val, bytes):
         state_val = state_val.decode()
+    is_link = state_val.startswith("link:")
 
-    token_data = await yandex.exchange_code(code)
-    profile = await yandex.fetch_profile(token_data["access_token"])
-
-    frontend = settings.FRONTEND_URL.rstrip("/")
-    if state_val.startswith("link:"):
-        # Привязка к существующему пользователю.
-        try:
-            link_user = await db.get(User, uuid.UUID(state_val.split(":", 1)[1]))
-        except (ValueError, IndexError):
-            link_user = None
-        if not link_user:
+    def fail(reason: str) -> RedirectResponse:
+        if is_link:
             return RedirectResponse(f"{frontend}/profile?link_error=1")
-        try:
-            await _link_oauth(
-                db,
-                link_user,
-                "yandex",
-                profile["provider_user_id"],
-                access_token=token_data.get("access_token"),
-                refresh_token=token_data.get("refresh_token"),
-            )
-        except HTTPException:
-            return RedirectResponse(f"{frontend}/profile?link_error=taken")
+        return RedirectResponse(f"{frontend}/login?error={reason}")
+
+    if error or not code:
+        # Пользователь отказал в доступе на стороне Яндекса.
+        return fail("yandex_denied")
+
+    try:
+        token_data = await yandex.exchange_code(code)
+        profile = await yandex.fetch_profile(token_data["access_token"])
+    except (httpx.HTTPError, KeyError, ValueError) as exc:
+        body = (
+            exc.response.text[:300]
+            if isinstance(exc, httpx.HTTPStatusError)
+            else ""
+        )
+        log.warning("Yandex OAuth request failed: %r %s", exc, body)
+        return fail("yandex_unavailable")
+
+    try:
+        if is_link:
+            # Привязка к существующему пользователю.
+            try:
+                link_user = await db.get(User, uuid.UUID(state_val.split(":", 1)[1]))
+            except (ValueError, IndexError):
+                link_user = None
+            if not link_user:
+                return fail("yandex_failed")
+            try:
+                await _link_oauth(
+                    db,
+                    link_user,
+                    "yandex",
+                    profile["provider_user_id"],
+                    access_token=token_data.get("access_token"),
+                    refresh_token=token_data.get("refresh_token"),
+                )
+            except HTTPException:
+                return RedirectResponse(f"{frontend}/profile?link_error=taken")
+            await db.commit()
+            return RedirectResponse(f"{frontend}/profile?linked=yandex")
+
+        user, is_new = await _upsert_oauth_user(
+            db,
+            "yandex",
+            profile["provider_user_id"],
+            profile["display_name"],
+            profile["avatar_url"],
+            access_token=token_data.get("access_token"),
+            refresh_token=token_data.get("refresh_token"),
+        )
         await db.commit()
-        return RedirectResponse(f"{frontend}/profile?linked=yandex")
+        await db.refresh(user)
+        access = await _issue_access(db, user)
+    except Exception:
+        log.exception("Yandex OAuth callback failed")
+        await db.rollback()
+        return fail("yandex_failed")
 
-    user, is_new = await _upsert_oauth_user(
-        db,
-        "yandex",
-        profile["provider_user_id"],
-        profile["display_name"],
-        profile["avatar_url"],
-        access_token=token_data.get("access_token"),
-        refresh_token=token_data.get("refresh_token"),
-    )
-    await db.commit()
-    await db.refresh(user)
-
-    access = await _issue_access(db, user)
     # Redirect back to the SPA with the access token in the fragment.
     redirect = RedirectResponse(
-        f"{settings.FRONTEND_URL}/auth/callback#access_token={access}&is_new_user={str(is_new).lower()}"
+        f"{frontend}/auth/callback#access_token={access}&is_new_user={str(is_new).lower()}"
     )
     _set_refresh_cookie(redirect, user.id)
     return redirect

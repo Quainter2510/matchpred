@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta, timezone
 
 from cryptography.fernet import Fernet
@@ -5,6 +6,8 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 
 from app.config import settings
+
+log = logging.getLogger("security")
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__rounds=12)
 
@@ -26,7 +29,14 @@ def _fernet() -> Fernet:
 def encrypt_token(token: str | None) -> str | None:
     if not token:
         return None
-    return _fernet().encrypt(token.encode()).decode()
+    # Сохранённые OAuth-токены нигде не читаются — это задел на будущее. Поэтому
+    # отсутствующий/некорректный FERNET_KEY не должен ронять вход или привязку
+    # аккаунта: токен просто не сохраняем (открытым текстом — никогда).
+    try:
+        return _fernet().encrypt(token.encode()).decode()
+    except ValueError:
+        log.warning("FERNET_KEY is missing or invalid — OAuth token not stored")
+        return None
 
 
 def decrypt_token(token_enc: str | None) -> str | None:
